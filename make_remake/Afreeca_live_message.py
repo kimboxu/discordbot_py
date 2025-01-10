@@ -194,7 +194,7 @@ class afreeca_live_message():
 						await asyncio.sleep(0.05)
 						continue
 
-				if init.afreeca_titleData.loc[user_id, 'oldChatChannelId'] != init.afreeca_titleData.loc[user_id, 'chatChannelId']:
+				if offState["broad"]["broad_no"] != init.afreeca_titleData.loc[user_id, 'chatChannelId']:
 					init.afreeca_titleData.loc[user_id, 'oldChatChannelId'] = init.afreeca_titleData.loc[user_id, 'chatChannelId']
 					init.afreeca_titleData.loc[user_id, 'chatChannelId'] = offState["broad"]["broad_no"]
 
@@ -204,6 +204,11 @@ class afreeca_live_message():
 				viewer_count = offState['broad']['current_sum_viewer']
 
 				try:
+					if thumbnailLink is True: 
+						if count % 5 == 0:
+							thumbnail = ""; break
+						else: continue
+						
 					thumbnail = self.getThumbnail(init, user_id, thumbnailLink)
 					if thumbnail is None: 
 						print(f"{datetime.now()} wait make thumbnail 1 .{str(thumbnailLink)}")
@@ -330,10 +335,15 @@ def afreeca_getChannelStateData(bno, bid):
 		base.errorPost(f"error get player live {str(e)}")
 		return None, None, None, None, None, None, None, None
 	live = res["CHANNEL"]["RESULT"]
+	adult_channel = -6
+	if live == adult_channel:  # 연령제한 체널로 썸네일이 없는 경우
+		return live, title, True, None, None, None, None, None
 	if live:
 		title = res["CHANNEL"]["TITLE"]
 		try: int(res['CHANNEL']['BNO'])
-		except: base.errorPost(f"error res['CHANNEL']['BNO'] {res['CHANNEL']['BNO']}")
+		except: 
+			base.errorPost(f"error res['CHANNEL']['BNO'] None")
+
 		thumbnail_url = f"https://liveimg.afreecatv.com/m/{res['CHANNEL']['BNO']}"
 
 		CHDOMAIN = res["CHANNEL"]["CHDOMAIN"].lower()
