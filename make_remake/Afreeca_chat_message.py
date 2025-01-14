@@ -49,7 +49,7 @@ class AfreecaChat:
                     await asyncio.sleep(1)
                     continue
 
-                if if_adult_channel:
+                if if_adult_channel is False:
                     await asyncio.sleep(15)
                     continue
                 

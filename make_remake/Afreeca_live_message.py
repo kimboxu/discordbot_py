@@ -204,7 +204,7 @@ class afreeca_live_message():
 				viewer_count = offState['broad']['current_sum_viewer']
 
 				try:
-					if thumbnailLink is True: 
+					if thumbnailLink is False: 
 						if count % 5 == 0:
 							thumbnail = ""; break
 						else: continue
@@ -337,7 +337,7 @@ def afreeca_getChannelStateData(bno, bid):
 	live = res["CHANNEL"]["RESULT"]
 	adult_channel = -6
 	if live == adult_channel:  # 연령제한 체널로 썸네일이 없는 경우
-		return live, title, True, None, None, None, None, None
+		return live, title, False, None, None, None, None, None
 	if live:
 		title = res["CHANNEL"]["TITLE"]
 		try: int(res['CHANNEL']['BNO'])
