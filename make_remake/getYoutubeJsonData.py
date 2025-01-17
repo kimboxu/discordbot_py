@@ -56,6 +56,7 @@ class getYoutubeJsonData:
 					for json_data in reversed(json_responses):
 						if json_data is not None:
 							await async_post_message(self.makeList_of_urls(init, json_data, youtubeChannelID))
+							print(f'{datetime.now()} {json_data["username"]}: {json_data["embeds"][0]["title"]}')
 							await asyncio.sleep(0.5)
 
 					self.saveYoutubeData(init, youtubeVideo, youtubeChannelID) #save video count
