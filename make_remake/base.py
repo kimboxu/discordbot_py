@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 from dotenv import load_dotenv
 
 class initVar:
-	# load_dotenv()
+	load_dotenv()
 	DO_TEST = False
 	
 	printCount 		= 100	#every 100 count, print count 
