@@ -203,13 +203,7 @@ class afreeca_live_message():
 				started_at   = self.getStarted_at(offState)
 				viewer_count = offState['broad']['current_sum_viewer']
 
-				try:
-					if thumbnailLink is False: 
-						if count % 5 == 0:
-							thumbnail = f"https://liveimg.afreecatv.com/m/{init.afreeca_titleData.loc[user_id, 'chatChannelId']}"
-							break
-						else: continue
-						
+				try:	
 					thumbnail = self.getThumbnail(init, user_id, thumbnailLink)
 					if thumbnail is None: 
 						print(f"{datetime.now()} wait make thumbnail 1 .{str(thumbnailLink)}")
@@ -226,7 +220,7 @@ class afreeca_live_message():
 				base.errorPost(f"error getJsonVars {user_id}.{e}")
 				await asyncio.sleep(0.05)
 
-		else: thumbnail = f"https://liveimg.afreecatv.com/m/{init.afreeca_titleData.loc[user_id, 'chatChannelId']}"
+		else: thumbnail = ""
 
 		return started_at, thumbnail, url, viewer_count
 
@@ -338,11 +332,12 @@ def afreeca_getChannelStateData(bno, bid):
 		return None, None, None, None, None, None, None, None
 	live = res["CHANNEL"]["RESULT"]
 	title = res["CHANNEL"]["TITLE"]
-	adult_channel = -6
-	if live == adult_channel:  # 연령제한 체널로 썸네일이 없는 경우
-		return live, title, False, None, None, None, None, None
+
+	adult_channel_state = -6
+	if live == adult_channel_state:  # 연령제한 체널로 썸네일링크 못 읽을 경우
+		thumbnail_url = f"https://liveimg.afreecatv.com/m/{bno}"
+		return live, title, thumbnail_url, None, None, None, None, None
 	if live:
-		title = res["CHANNEL"]["TITLE"]
 		try: int(res['CHANNEL']['BNO'])
 		except: 
 			base.errorPost(f"error res['CHANNEL']['BNO'] None")

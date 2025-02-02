@@ -44,12 +44,13 @@ class AfreecaChat:
 
                 channel_data = afreeca_getChannelStateData(init.afreeca_titleData.loc[afreecaID, 'chatChannelId'], init.afreecaIDList["afreecaID"][afreecaID])
                 # channel_data = afreeca_getChannelStateData(BNO, BID)
-                _, TITLE, if_adult_channel, CHDOMAIN, CHATNO, FTK, BJID, CHPT = channel_data
+                if_adult_channel, TITLE, thumbnail_url, CHDOMAIN, CHATNO, FTK, BJID, CHPT = channel_data
                 if TITLE is None: 
                     await asyncio.sleep(1)
                     continue
-
-                if if_adult_channel is False:
+                
+                adult_channel_state = -6
+                if if_adult_channel == adult_channel_state:
                     await asyncio.sleep(15)
                     continue
                 
