@@ -344,7 +344,7 @@ class chzzk_chat_message:
                 
             except (aiohttp.ClientError, asyncio.TimeoutError) as e:
                 await asyncio.sleep(0.05)
-                errorPost(f"error make thumbnail url (attempt {attempt + 1}/3): {str(e)}")
+                errorPost(f"error make thumbnail url {name}.{chat}.(attempt {attempt + 1}/3): {str(e)}")
                 
             except Exception as e:
                 await asyncio.sleep(0.05)
