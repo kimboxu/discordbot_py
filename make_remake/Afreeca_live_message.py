@@ -206,7 +206,8 @@ class afreeca_live_message():
 				try:
 					if thumbnailLink is False: 
 						if count % 5 == 0:
-							thumbnail = ""; break
+							thumbnail = f"https://liveimg.afreecatv.com/m/{init.afreeca_titleData.loc[user_id, 'chatChannelId']}"
+							break
 						else: continue
 						
 					thumbnail = self.getThumbnail(init, user_id, thumbnailLink)
@@ -225,7 +226,7 @@ class afreeca_live_message():
 				base.errorPost(f"error getJsonVars {user_id}.{e}")
 				await asyncio.sleep(0.05)
 
-		else: thumbnail = ""
+		else: thumbnail = f"https://liveimg.afreecatv.com/m/{init.afreeca_titleData.loc[user_id, 'chatChannelId']}"
 
 		return started_at, thumbnail, url, viewer_count
 
