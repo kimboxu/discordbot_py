@@ -210,8 +210,8 @@ class chzzk_chat_message:
                 if not init.DO_TEST and chat_cmd == CHZZK_CHAT_CMD['donation'] or nickname == "ai코딩":
                      asyncio.create_task(print_msg(init, chat_cmd, chat_data, chat_type, chzzkID, nickname))
 
-                # if nickname not in [*init.chzzk_chatFilter["channelName"]]:
-                #     return
+                if nickname not in [*init.chzzk_chatFilter["channelName"]]: #chzzk_chatFilter에 없는 사람 채팅은 제거
+                    return
 
                 if 'msg' in chat_data:
                     msg = chat_data['msg']
