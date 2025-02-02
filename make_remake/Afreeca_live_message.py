@@ -223,6 +223,7 @@ class afreeca_live_message():
 
 			except Exception as e: 
 				base.errorPost(f"error getJsonVars {user_id}.{e}")
+				await asyncio.sleep(0.05)
 
 		else: thumbnail = ""
 
