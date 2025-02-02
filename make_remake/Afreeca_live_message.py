@@ -336,6 +336,7 @@ def afreeca_getChannelStateData(bno, bid):
 		base.errorPost(f"error get player live {str(e)}")
 		return None, None, None, None, None, None, None, None
 	live = res["CHANNEL"]["RESULT"]
+	title = res["CHANNEL"]["TITLE"]
 	adult_channel = -6
 	if live == adult_channel:  # 연령제한 체널로 썸네일이 없는 경우
 		return live, title, False, None, None, None, None, None
