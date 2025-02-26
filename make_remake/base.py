@@ -155,7 +155,7 @@ async def discordBotDataVars(init: initVar):
 			for table_name, index_col in index_mappings.items():
 				data = getattr(init, table_name)
 				data.index = list(data[index_col])
-			
+
 			break
 			
 		except Exception as e:
@@ -183,38 +183,46 @@ def make_list_to_dict(data):
 	})
 
 async def async_post_message(arr, max_retries=3, max_concurrent=5):
+	async def send_message_with_retry(session, url, data, max_retries, semaphore):
+		async with semaphore:
+			for attempt in range(max_retries):
+				try:
+					async with session.post(url, json=data, timeout=15) as response:  # Increased timeout
+						response.raise_for_status()
+						return await response.text()
+				except ClientError as e:
+					if response.status == 404:
+						# Handle 404 error (e.g., delete user data)
+						print(f"404 error for URL {url}. Deleting user data...")
+						# Add your code to delete user data here
+					if attempt == max_retries - 1:
+						print(f"Failed to send message to {url} after {max_retries} attempts: {str(e)}")
+						supabase = create_client(os.environ['supabase_url'], os.environ['supabase_key'])
+						userStateData = supabase.table('userStateData').select("*").execute()
+						userStateData = re_idx(make_list_to_dict(userStateData.data))
+						idx = userStateData['idx'][userStateData.index[userStateData["discordURL"]==url]].values[0]
+						supabase.table('userStateData').delete().eq('idx', idx).execute()
+						await update_flag(supabase, 'all_date', True)
+						errorPost(f"Non-existent url:{url}.idx:{idx}")
+
+					await asyncio.sleep(0.2 * 2**attempt)  # Exponential backoff
+				except asyncio.TimeoutError:
+					print(f"{datetime.now()} timeout send_message_with_retry {str(data)}")
+					if attempt == max_retries - 1:
+						return None
+					await asyncio.sleep(0.2 * 2**attempt)  # Exponential backoff
+				except Exception as e:
+					print(f"Unexpected error in send_message_with_retry: {e}")
+					if attempt == max_retries - 1:
+						return None
+					await asyncio.sleep(0.2 * 2**attempt)  # Exponential backoff
+
 	semaphore = asyncio.Semaphore(max_concurrent)
 	async with ClientSession(connector=TCPConnector(ssl=False)) as session:
 		tasks = [send_message_with_retry(session, url, data, max_retries, semaphore) for url, data in arr]
 		responses = await asyncio.gather(*tasks, return_exceptions=True)
 		return [r for r in responses if not isinstance(r, Exception)]
 
-async def send_message_with_retry(session, url, data, max_retries, semaphore):
-	async with semaphore:
-		for attempt in range(max_retries):
-			try:
-				async with session.post(url, json=data, timeout=15) as response:  # Increased timeout
-					response.raise_for_status()
-					return await response.text()
-			except ClientError as e:
-				if response.status == 404:
-					# Handle 404 error (e.g., delete user data)
-					print(f"404 error for URL {url}. Deleting user data...")
-					# Add your code to delete user data here
-				if attempt == max_retries - 1:
-					print(f"Failed to send message to {url} after {max_retries} attempts: {str(e)}")
-					return None
-				await asyncio.sleep(0.2 * 2**attempt)  # Exponential backoff
-			except asyncio.TimeoutError:
-				print(f"{datetime.now()} timeout send_message_with_retry {str(data)}")
-				if attempt == max_retries - 1:
-					return None
-				await asyncio.sleep(0.2 * 2**attempt)  # Exponential backoff
-			except Exception as e:
-				print(f"Unexpected error in send_message_with_retry: {e}")
-				if attempt == max_retries - 1:
-					return None
-				await asyncio.sleep(0.2 * 2**attempt)  # Exponential backoff
 
 def fCount(init: initVar): #function to count
 	if init.count >= init.SEC:
