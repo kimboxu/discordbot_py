@@ -180,6 +180,7 @@ test.py
 app.py
 app2.py
 app3.py
+chzzk_token.py
 
 # Templates folder
 templates/
