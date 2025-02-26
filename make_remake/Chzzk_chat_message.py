@@ -5,6 +5,7 @@ import websockets
 from os import environ
 from requests import get
 from datetime import datetime
+from urllib.parse import unquote
 from json import loads, dumps, JSONDecodeError
 from dataclasses import dataclass
 from supabase import create_client
@@ -96,7 +97,7 @@ class chzzk_chat_message:
             )
             if not raw_message:
                 return
-
+            
             chat_cmd = raw_message['cmd']
 
             if chat_cmd == CHZZK_CHAT_CMD['ping']: 
@@ -183,7 +184,7 @@ class chzzk_chat_message:
             return None
             
     async def get_nickname(self, chat_data):
-        if loads(chat_data['extras']).get('styleType', {}) in [1, 2, 3]:
+        if chat_data['extras'] is None or loads(chat_data['extras']).get('styleType', {}) in [1, 2, 3]:
             return None
             
         # Handle anonymous users
@@ -193,6 +194,7 @@ class chzzk_chat_message:
         
         # Parse and validate profile data
         try:
+            if '%7D' in chat_data['profile']: chat_data['profile'] = unquote(chat_data['profile'])
             profile_data = loads(chat_data['profile'])
             if isinstance(profile_data, dict) and 'nickname' in profile_data:
                 return profile_data['nickname']
