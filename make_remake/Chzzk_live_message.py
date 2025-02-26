@@ -182,7 +182,8 @@ class chzzk_live_message():
 		for count in range(20):
 			started_at = self.getStarted_at(offState, "openDate")
 			viewer_count = self.getViewer_count(offState)
-			if message == "뱅온!" or init.chzzk_titleData.loc[chzzkID, 'live_state'] == "CLOSE": 
+			time_difference = (datetime.now() - datetime.fromisoformat(init.chzzk_titleData.loc[chzzkID, 'update_time'])).total_seconds()
+			if message == "뱅온!" or init.chzzk_titleData.loc[chzzkID, 'live_state'] == "CLOSE" or time_difference < 15: 
 				thumbnail = ""
 				break
 
