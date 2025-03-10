@@ -28,6 +28,7 @@ class chzzk_chat_message:
     async def chatMsg(self, init: initVar, chzzkID):
         while True:
             
+            if init.chat_json[chzzkID]: change_chzzk_chat_json(init, chzzkID, False)
             if init.chzzk_titleData.loc[chzzkID,'live_state'] == "CLOSE":
                 await asyncio.sleep(5)
                 continue
@@ -40,7 +41,7 @@ class chzzk_chat_message:
                         cid = init.chzzk_titleData.loc[chzzkID, 'chatChannelId']
                     )
                     
-                    if init.chat_json[chzzkID]: change_chzzk_chat_json(init, chzzkID, False)
+                    # if init.chat_json[chzzkID]: change_chzzk_chat_json(init, chzzkID, False)
                     await connect(chzzkChat, chzzkID, if_chzzk_Join(init, chzzkID, chzzkChat))
                     
                     ping_task = asyncio.create_task(self.ping(init, chzzkChat, chzzkID))
