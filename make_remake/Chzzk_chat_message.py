@@ -54,6 +54,8 @@ class chzzk_chat_message:
                 
     async def receive_message(self, init: initVar, chzzkChat: chzzkChatData, chzzkID):
         close_timer = None
+        # 채팅 처리를 위한 별도의 태스크 생성
+        chat_processor = None
 
         while True:
             try:
@@ -82,9 +84,13 @@ class chzzk_chat_message:
                         )
                     break
 
-                # 채팅 처리
+                # 채팅 처리 - 새로운 채팅을 계속 받아옴
                 await self.getChatList(init, chzzkID, chzzkChat)
-                await self.postChat(init, chzzkChat)
+                
+                # 이전 작업이 완료되었거나 없는 경우에만 새 작업 시작
+                if (not chat_processor or chat_processor.done()) and chzzkChat.chzzk_chat_msg_List:
+                    chat_processor = asyncio.create_task(self.postChat(init, chzzkChat))
+                    
             except Exception as e:
                 await async_errorPost(f"error receive_message {e}")
 
@@ -267,9 +273,10 @@ class chzzk_chat_message:
                 
     async def make_chat_list_of_urls(self, init: initVar, chatDic, chatDicKey):
         name, channelID, uid = chatDicKey
+        chat = chatDic[name, channelID, uid]
         
         try:
-            message = await self.make_thumbnail_url(init, name, chatDic[name, channelID, uid], channelID, uid)
+            message = await self.make_thumbnail_url(init, name, chat, channelID, uid)
             
             if init.DO_TEST:
                 # return [(environ['errorPostBotURL'], message)]
