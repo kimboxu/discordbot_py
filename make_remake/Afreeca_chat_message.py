@@ -112,6 +112,9 @@ class AfreecaChat:
         RECONNECT_THRESHOLD = 4  
 
         close_timer = None
+        # 채팅 처리를 위한 별도의 태스크 생성
+        chat_processor = None
+
         count = 0
 
         while True:
@@ -139,9 +142,13 @@ class AfreecaChat:
                     afreecaChat.sock.recv(), 
                     timeout=TIMEOUT_SECONDS
                 )
+
                 count = await self.decode_message(init, afreecaChat, data, afreecaID, count)
 
-                await self.postChat(init, afreecaChat)
+                # 이전 작업이 완료되었거나 없는 경우에만 새 작업 시작
+                if (not chat_processor or chat_processor.done()) and afreecaChat.afreeca_chat_msg_List:
+                    chat_processor = asyncio.create_task(self.postChat(init, afreecaChat))
+
             except asyncio.TimeoutError:
                 count += 1
                 continue
