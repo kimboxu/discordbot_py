@@ -182,6 +182,7 @@ app.py
 app2.py
 app3.py
 chzzk_token.py
+chzzk_official_api.py
 
 # Templates folder
 templates/
