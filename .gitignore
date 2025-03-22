@@ -183,6 +183,8 @@ app2.py
 app3.py
 chzzk_token.py
 chzzk_official_api.py
+Twitch_chat_message.py
+Twitch_live_message.py
 
 # Templates folder
 templates/

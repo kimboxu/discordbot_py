@@ -233,8 +233,8 @@ class chzzk_chat_message:
                     msg = "/" + msg
                 chzzkChat.chzzk_chat_msg_List.append([nickname, msg, chzzkID, chat_data.get('uid') or chat_data.get('userId')])
 
-                # if not(chat_cmd == CHZZK_CHAT_CMD['donation'] or nickname == "ai코딩"):
-                #      asyncio.create_task(print_msg(init, chat_cmd, chat_data, chat_type, chzzkID, nickname, post_msg_TF=False))
+                if not(chat_cmd == CHZZK_CHAT_CMD['donation'] or nickname in [*init.chzzk_chatFilter["channelName"]]):
+                     asyncio.create_task(print_msg(init, chat_cmd, chat_data, chat_type, chzzkID, nickname, post_msg_TF=False))
 
             except Exception as e:
                 await async_errorPost(f"error process_message {e}")
@@ -306,6 +306,7 @@ class chzzk_chat_message:
                 if key not in chatDic:
                     if len(chatDic) != 0:
                         return chatDic
+                    
                     chatDic[key] = str(chat)
                     chzzkChat.chzzk_chat_msg_List = chzzkChat.chzzk_chat_msg_List[1:]
                 else:
