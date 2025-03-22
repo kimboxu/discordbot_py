@@ -217,10 +217,13 @@ class chzzk_chat_message:
                 if nickname is None:
                     continue
                 if not init.DO_TEST and chat_cmd == CHZZK_CHAT_CMD['donation'] or nickname in [*init.chzzk_chatFilter["channelName"]]:
-                     asyncio.create_task(print_msg(init, chat_cmd, chat_data, chat_type, chzzkID, nickname))
+                    asyncio.create_task(print_msg(init, chat_cmd, chat_data, chat_type, chzzkID, nickname))
 
-                # if nickname not in [*init.chzzk_chatFilter["channelName"]]: #chzzk_chatFilter에 없는 사람 채팅은 제거
-                #     return
+                if not(chat_cmd == CHZZK_CHAT_CMD['donation'] or nickname in [*init.chzzk_chatFilter["channelName"]]):
+                    asyncio.create_task(print_msg(init, chat_cmd, chat_data, chat_type, chzzkID, nickname, post_msg_TF=False))
+
+                if nickname not in [*init.chzzk_chatFilter["channelName"]]: #chzzk_chatFilter에 없는 사람 채팅은 제거
+                    return
 
                 if 'msg' in chat_data:
                     msg = chat_data['msg']
@@ -232,9 +235,6 @@ class chzzk_chat_message:
                 if msg and msg[0] in [">"]:
                     msg = "/" + msg
                 chzzkChat.chzzk_chat_msg_List.append([nickname, msg, chzzkID, chat_data.get('uid') or chat_data.get('userId')])
-
-                if not(chat_cmd == CHZZK_CHAT_CMD['donation'] or nickname in [*init.chzzk_chatFilter["channelName"]]):
-                     asyncio.create_task(print_msg(init, chat_cmd, chat_data, chat_type, chzzkID, nickname, post_msg_TF=False))
 
             except Exception as e:
                 await async_errorPost(f"error process_message {e}")
