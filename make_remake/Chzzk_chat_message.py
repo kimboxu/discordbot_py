@@ -243,13 +243,12 @@ class chzzk_chat_message:
         try:
             post_msg_count = 0
             while chzzkChat.chzzk_chat_msg_List and post_msg_count < 1:
-                chatDic = self.addChat(chzzkChat)
+                # chatDic = self.addChat(chzzkChat)
                 tasks = []
-                for chatDicKey in chatDic:
-                    list_of_urls = await self.make_chat_list_of_urls(init, chatDic, chatDicKey)
-                    if list_of_urls:
-                        task = asyncio.create_task(async_post_message(list_of_urls))
-                        tasks.append(task)
+                list_of_urls = await self.make_chat_list_of_urls(init, chzzkChat)
+                if list_of_urls:
+                    task = asyncio.create_task(async_post_message(list_of_urls))
+                    tasks.append(task)
                 
                 if tasks:
                     await asyncio.gather(*tasks)
@@ -271,51 +270,58 @@ class chzzk_chat_message:
         
         print(f"{chzzkID} chat pong 종료")
                 
-    async def make_chat_list_of_urls(self, init: initVar, chatDic, chatDicKey):
-        name, channelID, uid = chatDicKey
-        chat = chatDic[name, channelID, uid]
-        
+    async def make_chat_list_of_urls(self, init: initVar, chzzkChat: chzzkChatData):
+        result_urls = []
         try:
+            name, chat, channelID, uid = chzzkChat.chzzk_chat_msg_List[0]
+            chzzkChat.chzzk_chat_msg_List.pop(0)
+
+            chzzkName = init.chzzkIDList.loc[channelID, 'channelName']
+            print(f"{datetime.now()} post message [채팅 - {chzzkName}]{name}: {chat}")
+            
             message = await self.make_thumbnail_url(init, name, chat, channelID, uid)
             
             if init.DO_TEST:
                 # return [(environ['errorPostBotURL'], message)]
-                return []
+                return result_urls
             
-            return [
-                (discordWebhookURL, message)
-                for discordWebhookURL in init.userStateData['discordURL']
-                if init.userStateData.loc[discordWebhookURL, "chat_user_json"] and 
-                name in init.userStateData.loc[discordWebhookURL, "chat_user_json"].get(channelID, [])
-            ]
-        except KeyError as e:
-            errorPost(f"KeyError in make_chat_list_of_urls: {str(e)}")
-        except AttributeError as e:
-            errorPost(f"AttributeError in make_chat_list_of_urls: {str(e)}")
+            for discordWebhookURL in init.userStateData['discordURL']:
+                try:
+                    if (init.userStateData.loc[discordWebhookURL, "chat_user_json"] and 
+                        name in init.userStateData.loc[discordWebhookURL, "chat_user_json"].get(channelID, [])):
+                        result_urls.append((discordWebhookURL, message))
+                except (KeyError, AttributeError):
+                    # 특정 URL 처리 중 오류가 발생해도 다른 URL 처리는 계속 진행
+                    continue
+                
+            return result_urls
         except Exception as e:
-            errorPost(f"Unexpected error in make_chat_list_of_urls: {str(e)}")
-        
-        return []
+            errorPost(f"Error in make_chat_list_of_urls: {type(e).__name__}: {str(e)}")
+            return result_urls
 
-    def addChat(self, chzzkChat: chzzkChatData): # 같은 사람이 빠르게 여러번 채팅을 입력했다면 합치기
+    def addChat(self, chzzkChat: chzzkChatData):
+
+        chatDic = {}
+        
         try:
-            chatDic = {}
-            chzzk_chatList = chzzkChat.chzzk_chat_msg_List[:]
-            for name, chat, channelID, uid in chzzk_chatList:
+            # 원본 리스트를 직접 순회하면서 처리
+            while chzzkChat.chzzk_chat_msg_List:
+                # 첫 번째 메시지 가져오기
+                name, chat, channelID, uid = chzzkChat.chzzk_chat_msg_List[0]
                 key = (name, channelID, uid)
-                if key not in chatDic:
-                    if len(chatDic) != 0:
-                        return chatDic
-                    
-                    chatDic[key] = str(chat)
-                    chzzkChat.chzzk_chat_msg_List = chzzkChat.chzzk_chat_msg_List[1:]
-                else:
+                
+                # 이미 해당 사용자의 메시지가 있으면 추가, 없으면 새로 생성
+                if key in chatDic:
                     chatDic[key] += f"\n{chat}"
-                    chzzkChat.chzzk_chat_msg_List = chzzkChat.chzzk_chat_msg_List[1:]
-            
+                else:
+                    chatDic[key] = str(chat)
+                
+                # 처리한 메시지 제거
+                chzzkChat.chzzk_chat_msg_List.pop(0)
+                
         except Exception as e:
-            errorPost(f"error addChat {e}")
-            return chatDic
+            errorPost(f"addChat 함수 실행 중 오류 발생: {e}")
+        
         return chatDic
 
     async def make_thumbnail_url(self, init: initVar, name, chat, channelID, uid):
