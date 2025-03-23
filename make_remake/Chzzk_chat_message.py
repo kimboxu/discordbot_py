@@ -273,12 +273,11 @@ class chzzk_chat_message:
     async def make_chat_list_of_urls(self, init: initVar, chzzkChat: chzzkChatData):
         result_urls = []
         try:
-            name, chat, channelID, uid = chzzkChat.chzzk_chat_msg_List[0]
-            chzzkChat.chzzk_chat_msg_List.pop(0)
+            name, chat, channelID, uid = chzzkChat.chzzk_chat_msg_List.pop(0)
 
             chzzkName = init.chzzkIDList.loc[channelID, 'channelName']
             print(f"{datetime.now()} post message [채팅 - {chzzkName}]{name}: {chat}")
-            
+
             message = await self.make_thumbnail_url(init, name, chat, channelID, uid)
             
             if init.DO_TEST:
