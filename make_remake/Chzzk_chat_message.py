@@ -24,6 +24,10 @@ class chzzkChatData:
     accessToken: str = ""
     extraToken: str = ""
     chzzkID: str = ""
+    
+    def __post_init__(self):
+        # 이벤트 객체 초기화
+        self.chat_event = asyncio.Event()
 
 class chzzk_chat_message:
     async def chatMsg(self, init: initVar, chzzkID):
@@ -66,6 +70,8 @@ class chzzk_chat_message:
             # 메시지 수신 및 처리 태스크 시작
             receiver_task = asyncio.create_task(self.message_receiver(init, chzzkChat, message_queue))
             processor_task = asyncio.create_task(self.message_processor(init, chzzkChat, message_queue))
+            chat_processor = asyncio.create_task(self.postChat(init, chzzkChat))
+                        
             
             while True:
                 try:
@@ -105,6 +111,8 @@ class chzzk_chat_message:
                 receiver_task.cancel()
             if processor_task and not processor_task.done():
                 processor_task.cancel()
+            if chat_processor and not chat_processor.done():
+                chat_processor.cancel()
 
     async def message_receiver(self, init: initVar, chzzkChat: chzzkChatData, message_queue: asyncio.Queue):
         """지속적으로 웹소켓에서 메시지를 수신하여 큐에 추가하는 함수"""
@@ -155,7 +163,6 @@ class chzzk_chat_message:
 
     async def message_processor(self, init: initVar, chzzkChat: chzzkChatData, message_queue: asyncio.Queue):
         """큐에서 메시지를 가져와 처리하는 함수"""
-        chat_processor = None
         while True:
             try:
                 # 큐에서 메시지 가져오기
@@ -199,12 +206,13 @@ class chzzk_chat_message:
                         chzzk_chat_list = [msg for msg in chat_data]
 
                     if chzzk_chat_list:
-                        # 처리를 위한 새 태스크 생성 없이 직접 처리
-                        await self.process_message(init, chzzkChat, chat_cmd, chzzk_chat_list, chat_type)
-
-                    # 이전 작업이 완료되었거나 없는 경우에만 새 작업 시작
-                    if (not chat_processor or chat_processor.done()) and chzzkChat.chzzk_chat_msg_List:
-                        chat_processor = asyncio.create_task(self.postChat(init, chzzkChat))
+                        # 메시지 필터링 처리
+                        await self.filter_message(init, chzzkChat, chat_cmd, chzzk_chat_list, chat_type)
+                        
+                        # 채팅 메시지가 추가되었다면 postChat 이벤트 발생
+                        if chzzkChat.chzzk_chat_msg_List:
+                            # 채팅 메시지가 있을 때만 postChat을 실행하도록 이벤트 설정
+                            chzzkChat.chat_event.set()
                     
                 except Exception as e:
                     await async_errorPost(f"Error processing message: {e}, {str(raw_message)}")
@@ -216,7 +224,6 @@ class chzzk_chat_message:
                 print(f"{datetime.now()} Error in message_processor: {e}")
                 await async_errorPost(f"Error in message_processor: {e}")
                 await asyncio.sleep(0.5)  # 예외 발생 시 잠시 대기
-
 
 
     # async def getChatList(self, init: initVar, chzzkChat: chzzkChatData):  
@@ -315,7 +322,7 @@ class chzzk_chat_message:
     #             await asyncio.sleep(0.05)
     #         return None
             
-    async def get_nickname(self, chat_data):
+    def get_nickname(self, chat_data):
         if chat_data['extras'] is None or loads(chat_data['extras']).get('styleType', {}) in [1, 2, 3]:
             return None
             
@@ -335,9 +342,9 @@ class chzzk_chat_message:
             
         return '(알 수 없음)'
 
-    async def process_message(self, init: initVar, chzzkChat: chzzkChatData, chat_cmd, chzzk_chat_list, chat_type):
+    async def filter_message(self, init: initVar, chzzkChat: chzzkChatData, chat_cmd, chzzk_chat_list, chat_type):
         for chat_data in chzzk_chat_list:
-            nickname = await self.get_nickname(chat_data)
+            nickname = self.get_nickname(chat_data)
             try:
                 if nickname is None:
                     continue
@@ -359,27 +366,38 @@ class chzzk_chat_message:
 
                 if msg and msg[0] in [">"]:
                     msg = "/" + msg
-                chzzkChat.chzzk_chat_msg_List.append([nickname, msg, chzzkChat.chzzkID, chat_data.get('uid') or chat_data.get('userId')])
+                chzzkChat.chzzk_chat_msg_List.append([nickname, msg, chat_data.get('uid') or chat_data.get('userId')])
 
             except Exception as e:
                 await async_errorPost(f"error process_message {e}")
 
     async def postChat(self, init: initVar, chzzkChat: chzzkChatData):
-        try:
-            post_msg_count = 0
-            while chzzkChat.chzzk_chat_msg_List and post_msg_count < 1:
-                # chatDic = self.addChat(chzzkChat)
-                tasks = []
-                list_of_urls = await self.make_chat_list_of_urls(init, chzzkChat)
-                if list_of_urls:
-                    task = asyncio.create_task(async_post_message(list_of_urls))
-                    tasks.append(task)
+        # Event 객체가 없으면 생성
+        if not hasattr(chzzkChat, 'chat_event'):
+            chzzkChat.chat_event = asyncio.Event()
+        
+        while True:
+            # 이벤트가 설정될 때까지 대기 (메시지가 추가될 때)
+            await chzzkChat.chat_event.wait()
+            
+            try:
+                if chzzkChat.chzzk_chat_msg_List:
+                    tasks = []
+                    list_of_urls = await self.make_chat_list_of_urls(init, chzzkChat)
+                    if list_of_urls:
+                        task = asyncio.create_task(async_post_message(list_of_urls))
+                        tasks.append(task)
+                    
+                    if tasks:
+                        await asyncio.gather(*tasks)
                 
-                if tasks:
-                    await asyncio.gather(*tasks)
-                    post_msg_count += 1
-        except Exception as e:
-            errorPost(f"error postChat: {str(e)}")
+                # 이벤트 초기화 (다음 메시지를 기다리기 위해)
+                chzzkChat.chat_event.clear()
+                
+            except Exception as e:
+                errorPost(f"error postChat: {str(e)}")
+                # 오류가 발생해도 이벤트를 초기화
+                chzzkChat.chat_event.clear()
 
     async def ping(self, init: initVar, chzzkChat: chzzkChatData):
         start_timer = None
@@ -398,12 +416,12 @@ class chzzk_chat_message:
     async def make_chat_list_of_urls(self, init: initVar, chzzkChat: chzzkChatData):
         result_urls = []
         try:
-            name, chat, channelID, uid = chzzkChat.chzzk_chat_msg_List.pop(0)
+            name, chat, uid = chzzkChat.chzzk_chat_msg_List.pop(0)
 
-            chzzkName = init.chzzkIDList.loc[channelID, 'channelName']
+            chzzkName = init.chzzkIDList.loc[chzzkChat.chzzkID, 'channelName']
             print(f"{datetime.now()} post message [채팅 - {chzzkName}]{name}: {chat}")
 
-            message = await self.make_thumbnail_url(init, name, chat, channelID, uid)
+            message = await self.make_thumbnail_url(init, name, chat, chzzkChat.chzzkID, uid)
             
             if init.DO_TEST:
                 # return [(environ['errorPostBotURL'], message)]
@@ -412,7 +430,7 @@ class chzzk_chat_message:
             for discordWebhookURL in init.userStateData['discordURL']:
                 try:
                     if (init.userStateData.loc[discordWebhookURL, "chat_user_json"] and 
-                        name in init.userStateData.loc[discordWebhookURL, "chat_user_json"].get(channelID, [])):
+                        name in init.userStateData.loc[discordWebhookURL, "chat_user_json"].get(chzzkChat.chzzkID, [])):
                         result_urls.append((discordWebhookURL, message))
                 except (KeyError, AttributeError):
                     # 특정 URL 처리 중 오류가 발생해도 다른 URL 처리는 계속 진행
