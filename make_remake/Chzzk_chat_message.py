@@ -23,6 +23,7 @@ class chzzkChatData:
     cid: str = ""
     accessToken: str = ""
     extraToken: str = ""
+    chzzkID: str = ""
 
 class chzzk_chat_message:
     async def chatMsg(self, init: initVar, chzzkID):
@@ -38,157 +39,281 @@ class chzzk_chat_message:
                     chzzkChat = chzzkChatData(
                         chzzk_chat_msg_List = [],
                         sock = sock,
-                        cid = init.chzzk_titleData.loc[chzzkID, 'chatChannelId']
+                        cid = init.chzzk_titleData.loc[chzzkID, 'chatChannelId'],
+                        chzzkID = chzzkID
                     )
                     
                     # if init.chat_json[chzzkID]: change_chzzk_chat_json(init, chzzkID, False)
-                    await connect(chzzkChat, chzzkID, if_chzzk_Join(init, chzzkID, chzzkChat))
+                    await connect(chzzkChat, if_chzzk_Join(init, chzzkChat))
                     
-                    ping_task = asyncio.create_task(self.ping(init, chzzkChat, chzzkID))
-                    receive_task = asyncio.create_task(self.receive_message(init, chzzkChat, chzzkID))
+                    ping_task = asyncio.create_task(self.ping(init, chzzkChat))
+                    receive_task = asyncio.create_task(self.receive_message(init, chzzkChat))
 
                     await asyncio.gather(ping_task, receive_task)
                 except Exception as e:
                     await async_errorPost(f"error chatMsg {e}")
-                    change_chzzk_chat_json(init, chzzkID)
+                    change_chzzk_chat_json(init, chzzkChat.chzzkID)
                 
-    async def receive_message(self, init: initVar, chzzkChat: chzzkChatData, chzzkID):
+    async def receive_message(self, init: initVar, chzzkChat: chzzkChatData):
         close_timer = None
-        # 채팅 처리를 위한 별도의 태스크 생성
-        chat_processor = None
+        # 메시지 큐 추가 - 메시지를 저장할 대기열
+        message_queue = asyncio.Queue()
+        # 메시지 수신 및 처리를 위한 태스크
+        receiver_task = None
+        processor_task = None
 
+        try:
+            # 메시지 수신 및 처리 태스크 시작
+            receiver_task = asyncio.create_task(self.message_receiver(init, chzzkChat, message_queue))
+            processor_task = asyncio.create_task(self.message_processor(init, chzzkChat, message_queue))
+            
+            while True:
+                try:
+                    live_state = init.chzzk_titleData.loc[chzzkChat.chzzkID, 'live_state']
+
+                    # 방송 상태 처리
+                    if live_state == "CLOSE" and close_timer is None:
+                        close_timer = asyncio.create_task(should_terminate(chzzkChat.sock, chzzkChat.chzzkID))
+                    elif (live_state == "OPEN" and close_timer) or if_chzzk_Join(init, chzzkChat):
+                        change_chzzk_chat_json(init, chzzkChat.chzzkID)
+                        close_timer = None
+                        if not init.DO_TEST:
+                            await async_errorPost(
+                                f"{chzzkChat.chzzkID}: 재연결을 위해 종료되었습니다.",
+                                errorPostBotURL=environ['chat_post_url']
+                            )
+                        break
+
+                    # 종료 조건 체크
+                    if close_timer and close_timer._result == "CLOSE":
+                        change_chzzk_chat_json(init, chzzkChat.chzzkID)
+                        if not init.DO_TEST:
+                            await async_errorPost(
+                                f"{chzzkChat.chzzkID}: 연결이 정상적으로 종료되었습니다.",
+                                errorPostBotURL=environ['chat_post_url']
+                            )
+                        break
+                    
+                    # 주기적으로 상태 확인
+                    await asyncio.sleep(1)
+                    
+                except Exception as e:
+                    await async_errorPost(f"error receive_message {e}")
+        finally:
+            # 종료 시 태스크 정리
+            if receiver_task and not receiver_task.done():
+                receiver_task.cancel()
+            if processor_task and not processor_task.done():
+                processor_task.cancel()
+
+    async def message_receiver(self, init: initVar, chzzkChat: chzzkChatData, message_queue: asyncio.Queue):
+        """지속적으로 웹소켓에서 메시지를 수신하여 큐에 추가하는 함수"""
         while True:
             try:
-                live_state = init.chzzk_titleData.loc[chzzkID, 'live_state']
-
-                # 방송 상태 처리
-                if live_state == "CLOSE" and close_timer is None:
-                    close_timer = asyncio.create_task(should_terminate(chzzkChat.sock, chzzkID))
-                elif (live_state == "OPEN" and close_timer) or if_chzzk_Join(init, chzzkID, chzzkChat):
-                    change_chzzk_chat_json(init, chzzkID)
-                    close_timer = None
-                    if not init.DO_TEST:
-                        await async_errorPost(
-                            f"{chzzkID}: 재연결을 위해 종료되었습니다.",
-                            errorPostBotURL=environ['chat_post_url']
-                        )
-                    break
-
-                # 종료 조건 체크
-                if close_timer and close_timer._result == "CLOSE":
-                    change_chzzk_chat_json(init, chzzkID)
-                    if not init.DO_TEST:
-                        await async_errorPost(
-                            f"{chzzkID}: 연결이 정상적으로 종료되었습니다.",
-                            errorPostBotURL=environ['chat_post_url']
-                        )
-                    break
-
-                # 채팅 처리 - 새로운 채팅을 계속 받아옴
-                await self.getChatList(init, chzzkID, chzzkChat)
+                # WebSocket 연결 상태 확인
+                if chzzkChat.sock.closed:
+                    chzzkChat.Join_count += 200
+                    await asyncio.sleep(1)
+                    continue
                 
-                # 이전 작업이 완료되었거나 없는 경우에만 새 작업 시작
-                if (not chat_processor or chat_processor.done()) and chzzkChat.chzzk_chat_msg_List:
-                    chat_processor = asyncio.create_task(self.postChat(init, chzzkChat))
+                # 논블로킹 방식으로 메시지 수신 시도
+                try:
+                    raw_message = await asyncio.wait_for(chzzkChat.sock.recv(), timeout=2)
+                    chzzkChat.Join_count = 0
+                    message_data = loads(raw_message)
+                    
+                    # 메시지 큐에 추가
+                    await message_queue.put(message_data)
+                    
+                except asyncio.TimeoutError:
+                    if init.chzzk_titleData.loc[chzzkChat.chzzkID, 'live_state'] == "OPEN":
+                        chzzkChat.Join_count += 1
+                    await asyncio.sleep(0.05)
+                    continue
+                    
+                except (JSONDecodeError, ConnectionError, RuntimeError, websockets.exceptions.ConnectionClosed) as e:
+                    if init.chzzk_titleData.loc[chzzkChat.chzzkID, 'live_state'] == "OPEN":
+                        chzzkChat.Join_count += 1
+                        print(f"{datetime.now()} Join_count{chzzkChat.chzzkID} 2.{chzzkChat.Join_count}.{e}")
+                        
+                        # 연결 관련 오류 처리 개선
+                        if (isinstance(e, (JSONDecodeError, ConnectionError, websockets.exceptions.ConnectionClosed)) 
+                            or str(e) == "socket is already closed." 
+                            or "no close frame received or sent" in str(e)):
+                            chzzkChat.Join_count += 200
+                            try:
+                                await chzzkChat.sock.close()
+                            except:
+                                pass
+                    await asyncio.sleep(0.5)  # 에러 발생 시 약간 더 긴 대기 시간
+                    continue
                     
             except Exception as e:
-                await async_errorPost(f"error receive_message {e}")
+                print(f"{datetime.now()} Error in message_receiver: {e}")
+                await async_errorPost(f"Error in message_receiver: {e}")
+                await asyncio.sleep(1)  # 예외 발생 시 잠시 대기
 
-    async def getChatList(self, init: initVar, chzzkID, chzzkChat: chzzkChatData):  
-        chzzk_connect_count(init, chzzkID, chzzkChat, 1)
-        try:
-            # raw_message = await self.f_raw_message(init, chzzkID)
-            raw_message = await asyncio.wait_for(
-                self.f_raw_message(init, chzzkChat, chzzkID), 
-                timeout=10
-            )
-            if not raw_message:
-                return
-            
-            chat_cmd = raw_message['cmd']
-
-            if chat_cmd == CHZZK_CHAT_CMD['ping']: 
-                await chzzkChat.sock.send(dumps(CHZZK_CHAT_DICT(chzzkChat, "pong")))
-                return
-
-            # 채팅 타입 결정
-            chat_type = {
-                CHZZK_CHAT_CMD['chat']: '채팅',
-                CHZZK_CHAT_CMD['request_chat']: '채팅',
-                CHZZK_CHAT_CMD['donation']: '후원'
-            }.get(chat_cmd, '모름')
-
-            # 에러 체크
-            if chat_cmd != CHZZK_CHAT_CMD['donation'] and raw_message['tid'] is None:
-                bdy = raw_message.get('bdy', {})
-                if message := bdy.get('message'):
-                    errorPost(str(message))
-                return
-
-            # 임시 제한 처리
-            bdy = raw_message.get('bdy', {})
-            if isinstance(bdy, dict) and bdy.get('type') == 'TEMPORARY_RESTRICT':
-                duration = bdy.get('duration', 30)
-                print(f"{datetime.now()} 임시 제한 상태입니다. {duration}초 동안 대기합니다.")
-                await asyncio.sleep(duration)
-                return
-            
-            
-            # 메시지 리스트 처리
-            if isinstance(bdy, dict) and 'messageList' in bdy:
-                chat_data = bdy['messageList']
-                chzzk_chat_list = [msg for msg in chat_data]
-            else:
-                chat_data = bdy if isinstance(bdy, list) else [bdy]
-                chzzk_chat_list = [msg for msg in chat_data]
-
-            if chzzk_chat_list:
-                await self.process_message(init, chzzkChat, chat_cmd, chzzk_chat_list, chat_type, chzzkID)
-            
-        except asyncio.TimeoutError:
-            print(f"{datetime.now()} Timeout occurred in getChatList for chzzkID: {chzzkID}")
-        except Exception as e:
-            errorPost(f"error chatMsg3333 {e}.{str(raw_message)}")
-
-    async def f_raw_message(self, init: initVar, chzzkChat: chzzkChatData, chzzkID):
-        try:
-            # WebSocket 연결 상태 확인 추가
-            if chzzkChat.sock.closed:
-                chzzkChat.Join_count += 200
-                return None
-            
-            raw_message = await asyncio.wait_for(chzzkChat.sock.recv(), timeout=2)
-            chzzkChat.Join_count = 0
-            return loads(raw_message)
-
-        except asyncio.TimeoutError:
-            if init.chzzk_titleData.loc[chzzkID,'live_state'] == "OPEN":
-                chzzkChat.Join_count += 1
-                await asyncio.sleep(0.05)
-            return None
-
-        except (JSONDecodeError, ConnectionError, RuntimeError, websockets.exceptions.ConnectionClosed) as e:
-            if init.chzzk_titleData.loc[chzzkID,'live_state'] == "OPEN":
-                chzzkChat.Join_count += 1
-                print(f"{datetime.now()} Join_count{chzzkID} 2.{chzzkChat.Join_count}.{e}")
+    async def message_processor(self, init: initVar, chzzkChat: chzzkChatData, message_queue: asyncio.Queue):
+        """큐에서 메시지를 가져와 처리하는 함수"""
+        chat_processor = None
+        while True:
+            try:
+                # 큐에서 메시지 가져오기
+                raw_message = await message_queue.get()
                 
-                # 연결 관련 오류 처리 개선
-                if (isinstance(e, (JSONDecodeError, ConnectionError, websockets.exceptions.ConnectionClosed)) 
-                    or str(e) == "socket is already closed." 
-                    or "no close frame received or sent" in str(e)):
-                    chzzkChat.Join_count += 200
-                    try:
-                        await chzzkChat.sock.close()
-                    except:
-                        pass
-                    await asyncio.sleep(0.05)
-            return None
-        except Exception as e:
-            if init.chzzk_titleData.loc[chzzkID,'live_state'] == "OPEN":
-                chzzkChat.Join_count += 1
-                print(f"{datetime.now()} Join_count{chzzkID} 3.{chzzkChat.Join_count}.{e}")
-                await asyncio.sleep(0.05)
-            return None
+                try:
+                    chat_cmd = raw_message['cmd']
+
+                    if chat_cmd == CHZZK_CHAT_CMD['ping']: 
+                        await chzzkChat.sock.send(dumps(CHZZK_CHAT_DICT(chzzkChat, "pong")))
+                        continue
+
+                    # 채팅 타입 결정
+                    chat_type = {
+                        CHZZK_CHAT_CMD['chat']: '채팅',
+                        CHZZK_CHAT_CMD['request_chat']: '채팅',
+                        CHZZK_CHAT_CMD['donation']: '후원'
+                    }.get(chat_cmd, '모름')
+
+                    # 에러 체크
+                    if chat_cmd != CHZZK_CHAT_CMD['donation'] and raw_message['tid'] is None:
+                        bdy = raw_message.get('bdy', {})
+                        if message := bdy.get('message'):
+                            await async_errorPost(str(message))
+                        continue
+
+                    # 임시 제한 처리
+                    bdy = raw_message.get('bdy', {})
+                    if isinstance(bdy, dict) and bdy.get('type') == 'TEMPORARY_RESTRICT':
+                        duration = bdy.get('duration', 30)
+                        print(f"{datetime.now()} 임시 제한 상태입니다. {duration}초 동안 대기합니다.")
+                        await asyncio.sleep(duration)
+                        continue
+                    
+                    # 메시지 리스트 처리
+                    if isinstance(bdy, dict) and 'messageList' in bdy:
+                        chat_data = bdy['messageList']
+                        chzzk_chat_list = [msg for msg in chat_data]
+                    else:
+                        chat_data = bdy if isinstance(bdy, list) else [bdy]
+                        chzzk_chat_list = [msg for msg in chat_data]
+
+                    if chzzk_chat_list:
+                        # 처리를 위한 새 태스크 생성 없이 직접 처리
+                        await self.process_message(init, chzzkChat, chat_cmd, chzzk_chat_list, chat_type)
+
+                    # 이전 작업이 완료되었거나 없는 경우에만 새 작업 시작
+                    if (not chat_processor or chat_processor.done()) and chzzkChat.chzzk_chat_msg_List:
+                        chat_processor = asyncio.create_task(self.postChat(init, chzzkChat))
+                    
+                except Exception as e:
+                    await async_errorPost(f"Error processing message: {e}, {str(raw_message)}")
+                
+                # 큐 작업 완료 신호
+                message_queue.task_done()
+                
+            except Exception as e:
+                print(f"{datetime.now()} Error in message_processor: {e}")
+                await async_errorPost(f"Error in message_processor: {e}")
+                await asyncio.sleep(0.5)  # 예외 발생 시 잠시 대기
+
+
+
+    # async def getChatList(self, init: initVar, chzzkChat: chzzkChatData):  
+    #     chzzk_connect_count(init, chzzkChat, 1)
+    #     try:
+    #         # raw_message = await self.f_raw_message(init, chzzkID)
+    #         raw_message = await asyncio.wait_for(
+    #             self.f_raw_message(init, chzzkChat), 
+    #             timeout=10
+    #         )
+    #         if not raw_message:
+    #             return
+            
+    #         chat_cmd = raw_message['cmd']
+
+    #         if chat_cmd == CHZZK_CHAT_CMD['ping']: 
+    #             await chzzkChat.sock.send(dumps(CHZZK_CHAT_DICT(chzzkChat, "pong")))
+    #             return
+
+    #         # 채팅 타입 결정
+    #         chat_type = {
+    #             CHZZK_CHAT_CMD['chat']: '채팅',
+    #             CHZZK_CHAT_CMD['request_chat']: '채팅',
+    #             CHZZK_CHAT_CMD['donation']: '후원'
+    #         }.get(chat_cmd, '모름')
+
+    #         # 에러 체크
+    #         if chat_cmd != CHZZK_CHAT_CMD['donation'] and raw_message['tid'] is None:
+    #             bdy = raw_message.get('bdy', {})
+    #             if message := bdy.get('message'):
+    #                 errorPost(str(message))
+    #             return
+
+    #         # 임시 제한 처리
+    #         bdy = raw_message.get('bdy', {})
+    #         if isinstance(bdy, dict) and bdy.get('type') == 'TEMPORARY_RESTRICT':
+    #             duration = bdy.get('duration', 30)
+    #             print(f"{datetime.now()} 임시 제한 상태입니다. {duration}초 동안 대기합니다.")
+    #             await asyncio.sleep(duration)
+    #             return
+            
+            
+    #         # 메시지 리스트 처리
+    #         if isinstance(bdy, dict) and 'messageList' in bdy:
+    #             chat_data = bdy['messageList']
+    #             chzzk_chat_list = [msg for msg in chat_data]
+    #         else:
+    #             chat_data = bdy if isinstance(bdy, list) else [bdy]
+    #             chzzk_chat_list = [msg for msg in chat_data]
+
+    #         if chzzk_chat_list:
+    #             await self.process_message(init, chzzkChat, chat_cmd, chzzk_chat_list, chat_type)
+            
+    #     except asyncio.TimeoutError:
+    #         print(f"{datetime.now()} Timeout occurred in getChatList for chzzkID: {chzzkChat.chzzkID}")
+    #     except Exception as e:
+    #         errorPost(f"error chatMsg3333 {e}.{str(raw_message)}")
+
+    # async def f_raw_message(self, init: initVar, chzzkChat: chzzkChatData):
+    #     try:
+    #         # WebSocket 연결 상태 확인 추가
+    #         if chzzkChat.sock.closed:
+    #             chzzkChat.Join_count += 200
+    #             return None
+            
+    #         raw_message = await asyncio.wait_for(chzzkChat.sock.recv(), timeout=2)
+    #         chzzkChat.Join_count = 0
+    #         return loads(raw_message)
+
+    #     except asyncio.TimeoutError:
+    #         if init.chzzk_titleData.loc[chzzkChat.chzzkID,'live_state'] == "OPEN":
+    #             chzzkChat.Join_count += 1
+    #             await asyncio.sleep(0.05)
+    #         return None
+
+    #     except (JSONDecodeError, ConnectionError, RuntimeError, websockets.exceptions.ConnectionClosed) as e:
+    #         if init.chzzk_titleData.loc[chzzkChat.chzzkID,'live_state'] == "OPEN":
+    #             chzzkChat.Join_count += 1
+    #             print(f"{datetime.now()} Join_count{chzzkChat.chzzkID} 2.{chzzkChat.Join_count}.{e}")
+                
+    #             # 연결 관련 오류 처리 개선
+    #             if (isinstance(e, (JSONDecodeError, ConnectionError, websockets.exceptions.ConnectionClosed)) 
+    #                 or str(e) == "socket is already closed." 
+    #                 or "no close frame received or sent" in str(e)):
+    #                 chzzkChat.Join_count += 200
+    #                 try:
+    #                     await chzzkChat.sock.close()
+    #                 except:
+    #                     pass
+    #                 await asyncio.sleep(0.05)
+    #         return None
+    #     except Exception as e:
+    #         if init.chzzk_titleData.loc[chzzkChat.chzzkID,'live_state'] == "OPEN":
+    #             chzzkChat.Join_count += 1
+    #             print(f"{datetime.now()} Join_count{chzzkChat.chzzkID} 3.{chzzkChat.Join_count}.{e}")
+    #             await asyncio.sleep(0.05)
+    #         return None
             
     async def get_nickname(self, chat_data):
         if chat_data['extras'] is None or loads(chat_data['extras']).get('styleType', {}) in [1, 2, 3]:
@@ -210,17 +335,17 @@ class chzzk_chat_message:
             
         return '(알 수 없음)'
 
-    async def process_message(self, init: initVar, chzzkChat: chzzkChatData, chat_cmd, chzzk_chat_list, chat_type, chzzkID):
+    async def process_message(self, init: initVar, chzzkChat: chzzkChatData, chat_cmd, chzzk_chat_list, chat_type):
         for chat_data in chzzk_chat_list:
             nickname = await self.get_nickname(chat_data)
             try:
                 if nickname is None:
                     continue
                 if not init.DO_TEST and chat_cmd == CHZZK_CHAT_CMD['donation'] or nickname in [*init.chzzk_chatFilter["channelName"]]:
-                    asyncio.create_task(print_msg(init, chat_cmd, chat_data, chat_type, chzzkID, nickname))
+                    asyncio.create_task(print_msg(init, chat_cmd, chat_data, chat_type, chzzkChat.chzzkID, nickname))
 
                 if not(chat_cmd == CHZZK_CHAT_CMD['donation'] or nickname in [*init.chzzk_chatFilter["channelName"]]):
-                    asyncio.create_task(print_msg(init, chat_cmd, chat_data, chat_type, chzzkID, nickname, post_msg_TF=False))
+                    asyncio.create_task(print_msg(init, chat_cmd, chat_data, chat_type, chzzkChat.chzzkID, nickname, post_msg_TF=False))
 
                 if nickname not in [*init.chzzk_chatFilter["channelName"]]: #chzzk_chatFilter에 없는 사람 채팅은 제거
                     return
@@ -234,7 +359,7 @@ class chzzk_chat_message:
 
                 if msg and msg[0] in [">"]:
                     msg = "/" + msg
-                chzzkChat.chzzk_chat_msg_List.append([nickname, msg, chzzkID, chat_data.get('uid') or chat_data.get('userId')])
+                chzzkChat.chzzk_chat_msg_List.append([nickname, msg, chzzkChat.chzzkID, chat_data.get('uid') or chat_data.get('userId')])
 
             except Exception as e:
                 await async_errorPost(f"error process_message {e}")
@@ -256,9 +381,9 @@ class chzzk_chat_message:
         except Exception as e:
             errorPost(f"error postChat: {str(e)}")
 
-    async def ping(self, init: initVar, chzzkChat: chzzkChatData, chzzkID):
+    async def ping(self, init: initVar, chzzkChat: chzzkChatData):
         start_timer = None
-        while not init.chat_json[chzzkID]:
+        while not init.chat_json[chzzkChat.chzzkID]:
             try:
                 if start_timer == None: start_timer = asyncio.create_task(timer(10))
                 if start_timer and start_timer._result == "CLOSE": 
@@ -268,7 +393,7 @@ class chzzk_chat_message:
                 await async_errorPost(f"error pong {e}")
             await asyncio.sleep(0.5)
         
-        print(f"{chzzkID} chat pong 종료")
+        print(f"{chzzkChat.chzzkID} chat pong 종료")
                 
     async def make_chat_list_of_urls(self, init: initVar, chzzkChat: chzzkChatData):
         result_urls = []
@@ -372,15 +497,15 @@ class chzzk_chat_message:
                 "username"  : name + " >> " + init.chzzkIDList.loc[channelID, 'channelName'],
                 "avatar_url": thumbnail_url}
 
-    def chzzk_getLink(self, chzzkID):
-        return f'https://api.chzzk.naver.com/service/v1/channels/{chzzkID}'
+    def chzzk_getLink(self, uid):
+        return f'https://api.chzzk.naver.com/service/v1/channels/{uid}'
     
 def change_chzzk_chat_json(init: initVar, chzzkID, chzzkID_chat_TF = True):
     init.chat_json[chzzkID] = chzzkID_chat_TF
     supabase = create_client(environ['supabase_url'], environ['supabase_key'])
     supabase.table('date_update').upsert({"idx": 0, "chat_json": init.chat_json}).execute()
     
-async def connect(chzzkChat: chzzkChatData, chzzkID, TF = 0):
+async def connect(chzzkChat: chzzkChatData, TF = 0):
     
     chzzkChat.chzzk_chat_count = 40000
     chzzkChat.accessToken, chzzkChat.extraToken = chzzk_api.fetch_accessToken(chzzkChat.cid, getChzzkCookie())
@@ -393,7 +518,7 @@ async def connect(chzzkChat: chzzkChatData, chzzkID, TF = 0):
     sock_response = loads(await chzzkChat.sock.recv())
 
     # if TF == 2:
-    await async_errorPost(f"{chzzkID} 연결 완료 {chzzkChat.cid}", errorPostBotURL=environ['chat_post_url'])
+    await async_errorPost(f"{chzzkChat.chzzkID} 연결 완료 {chzzkChat.cid}", errorPostBotURL=environ['chat_post_url'])
     # else: 
     #     print(f"{datetime.now()} {chzzkID} 연결 완료 {chzzkChat.cid}")
 
@@ -427,31 +552,31 @@ def send(chzzkChat: chzzkChatData, message):
 
     chzzkChat.sock.send(dumps(dict(send_dict, **default_dict)))
 
-def if_chzzk_Join(init: initVar, chzzkID, chzzkChat: chzzkChatData) -> int:
+def if_chzzk_Join(init: initVar, chzzkChat: chzzkChatData) -> int:
     try:
         
-        if not if_after_time(init.chzzk_titleData.loc[chzzkID,'update_time']):
-            chzzkChat.cid = chzzk_api.fetch_chatChannelId(init.chzzkIDList.loc[chzzkID, "channel_code"])
-            if chzzkChat.cid != init.chzzk_titleData.loc[chzzkID, 'chatChannelId']:
-                change_chatChannelId(init, chzzkChat, chzzkID)
+        if not if_after_time(init.chzzk_titleData.loc[chzzkChat.chzzkID,'update_time']):
+            chzzkChat.cid = chzzk_api.fetch_chatChannelId(init.chzzkIDList.loc[chzzkChat.chzzkID, "channel_code"])
+            if chzzkChat.cid != init.chzzk_titleData.loc[chzzkChat.chzzkID, 'chatChannelId']:
+                change_chatChannelId(init, chzzkChat)
                 return 2
-        if chzzkChat.Join_count >= chzzkChat.joinChatCount or chzzkChat.chzzk_chat_count == 0 or init.chat_json[chzzkID]:
+        if chzzkChat.Join_count >= chzzkChat.joinChatCount or chzzkChat.chzzk_chat_count == 0 or init.chat_json[chzzkChat.chzzkID]:
             return 1
         
-    except Exception as e: errorPost(f"error if_chzzk_Join {chzzkID}.{e}")
+    except Exception as e: errorPost(f"error if_chzzk_Join {chzzkChat.chzzkID}.{e}")
     return 0
 
-def change_chatChannelId(init: initVar, chzzkChat: chzzkChatData, chzzkID):
+def change_chatChannelId(init: initVar, chzzkChat: chzzkChatData):
     idx = {chzzk: i for i, chzzk in enumerate(init.chzzk_titleData["channelID"])}
-    init.chzzk_titleData.loc[chzzkID, 'oldChatChannelId'] = init.chzzk_titleData.loc[chzzkID, 'chatChannelId']
-    init.chzzk_titleData.loc[chzzkID, 'chatChannelId'] = chzzkChat.cid
+    init.chzzk_titleData.loc[chzzkChat.chzzkID, 'oldChatChannelId'] = init.chzzk_titleData.loc[chzzkChat.chzzkID, 'chatChannelId']
+    init.chzzk_titleData.loc[chzzkChat.chzzkID, 'chatChannelId'] = chzzkChat.cid
     updates = {
-        'oldChatChannelId': init.chzzk_titleData.loc[chzzkID, 'oldChatChannelId'],
-        'chatChannelId': init.chzzk_titleData.loc[chzzkID, 'chatChannelId']}
-    init.chzzk_titleData.loc[chzzkID, updates.keys()] = updates.values()
+        'oldChatChannelId': init.chzzk_titleData.loc[chzzkChat.chzzkID, 'oldChatChannelId'],
+        'chatChannelId': init.chzzk_titleData.loc[chzzkChat.chzzkID, 'chatChannelId']}
+    init.chzzk_titleData.loc[chzzkChat.chzzkID, updates.keys()] = updates.values()
 
     supabase_data = {
-        "idx": idx[chzzkID],
+        "idx": idx[chzzkChat.chzzkID],
         **updates}
     
     supabase = create_client(environ['supabase_url'], environ['supabase_key'])
@@ -491,31 +616,31 @@ async def print_msg(init: initVar, chat_cmd, chat_data, chat_type, chzzkID, nick
         if chat_cmd == CHZZK_CHAT_CMD['donation']:
             await async_errorPost(f"{datetime.now()} it is test {e}.{loads(chat_data['extras'])}")
 
-async def sendHi(init: initVar, chzzkID, chzzkChat: chzzkChatData, himent):
-    if if_chzzk_Join(init, chzzkID, chzzkChat) == 2:
+async def sendHi(init: initVar, chzzkChat: chzzkChatData, himent):
+    if if_chzzk_Join(init, chzzkChat) == 2:
         async with websockets.connect('wss://kr-ss3.chat.naver.com/chat', timeout=3.0) as websocket:
-            await connect(chzzkChat, chzzkID)
-        errorPost(f"send hi {init.chzzkIDList.loc[chzzkID, 'channelName']} {chzzkChat.cid}")
+            await connect(chzzkChat)
+        errorPost(f"send hi {init.chzzkIDList.loc[chzzkChat.chzzkID, 'channelName']} {chzzkChat.cid}")
         send(chzzkChat, himent)
 
-def onAirChat(chzzkChat: chzzkChatData, chzzkID, message):
+def onAirChat(chzzkChat: chzzkChatData, message):
     himent = None
     if message != "뱅온!":return
-    if chzzkID == "charmel"   	: himent = "챠하"
-    if chzzkID == "mawang0216"	: himent = "마하"
-    if chzzkID == "bighead033"	: himent = "빅하"
-    if chzzkID == "suisui_again": himent = "싀하"
+    if chzzkChat.chzzkID == "charmel"   	: himent = "챠하"
+    if chzzkChat.chzzkID == "mawang0216"	: himent = "마하"
+    if chzzkChat.chzzkID == "bighead033"	: himent = "빅하"
+    if chzzkChat.chzzkID == "suisui_again": himent = "싀하"
     if himent: send(chzzkChat, himent)
 
-def offAirChat(chzzkChat: chzzkChatData, chzzkID):
+def offAirChat(chzzkChat: chzzkChatData):
     byement = None
-    if chzzkID =="charmel"   : byement = "챠바"
-    if chzzkID =="mawang0216": byement = "마바"
-    if chzzkID =="bighead033": byement = "빅바"
+    if chzzkChat.chzzkID =="charmel"   : byement = "챠바"
+    if chzzkChat.chzzkID =="mawang0216": byement = "마바"
+    if chzzkChat.chzzkID =="bighead033": byement = "빅바"
     if byement: send(chzzkChat, byement)
 
-def chzzk_connect_count(init: initVar, chzzkID, chzzkChat, num = 1):
-    if chzzkChat.chzzk_chat_count > 0 and init.chzzk_titleData.loc[chzzkID,"live_state"] == "OPEN": chzzkChat.chzzk_chat_count -= num
+def chzzk_connect_count(init: initVar, chzzkChat: chzzkChatData, num = 1):
+    if chzzkChat.chzzk_chat_count > 0 and init.chzzk_titleData.loc[chzzkChat.chzzkID,"live_state"] == "OPEN": chzzkChat.chzzk_chat_count -= num
     if chzzkChat.chzzk_chat_count < 0: chzzkChat.chzzk_chat_count = 0
 
 def CHZZK_CHAT_DICT(chzzkChat: chzzkChatData, option = "connect", num = 50):
