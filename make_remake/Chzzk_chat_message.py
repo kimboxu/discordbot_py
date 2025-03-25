@@ -183,7 +183,7 @@ class chzzk_chat_message:
                     }.get(chat_cmd, '모름')
 
                     # 에러 체크
-                    if chat_cmd != CHZZK_CHAT_CMD['donation'] and raw_message['tid'] is None:
+                    if chat_type != "후원" and raw_message['tid'] is None:
                         bdy = raw_message.get('bdy', {})
                         if message := bdy.get('message'):
                             asyncio.create_task(async_errorPost(str(message)))
@@ -207,7 +207,7 @@ class chzzk_chat_message:
 
                     if chzzk_chat_list:
                         # 메시지 필터링 처리
-                        await self.filter_message(init, chzzkChat, chat_cmd, chzzk_chat_list, chat_type)
+                        await self.filter_message(init, chzzkChat, chzzk_chat_list, chat_type)
                         
                         # 채팅 메시지가 추가되었다면 postChat 이벤트 발생
                         if chzzkChat.chzzk_chat_msg_List:
@@ -245,17 +245,17 @@ class chzzk_chat_message:
             
         return '(알 수 없음)'
 
-    async def filter_message(self, init: initVar, chzzkChat: chzzkChatData, chat_cmd, chzzk_chat_list, chat_type):
+    async def filter_message(self, init: initVar, chzzkChat: chzzkChatData, chzzk_chat_list, chat_type):
         for chat_data in chzzk_chat_list:
             nickname = self.get_nickname(chat_data)
             try:
                 if nickname is None:
                     continue
-                if not init.DO_TEST and chat_cmd == CHZZK_CHAT_CMD['donation'] or nickname in [*init.chzzk_chatFilter["channelName"]]:
-                    asyncio.create_task(print_msg(init, chat_cmd, chat_data, chat_type, chzzkChat.chzzkID, nickname))
+                if not init.DO_TEST and chat_type == "후원" or nickname in [*init.chzzk_chatFilter["channelName"]]:
+                    asyncio.create_task(print_msg(init, chat_data, chat_type, chzzkChat.chzzkID, nickname))
 
-                if not(chat_cmd == CHZZK_CHAT_CMD['donation'] or nickname in [*init.chzzk_chatFilter["channelName"]]):
-                    asyncio.create_task(print_msg(init, chat_cmd, chat_data, chat_type, chzzkChat.chzzkID, nickname, post_msg_TF=False))
+                if not(nickname in [*init.chzzk_chatFilter["channelName"]]):
+                    asyncio.create_task(print_msg(init, chat_data, chat_type, chzzkChat.chzzkID, nickname, post_msg_TF=False))
 
                 if nickname not in [*init.chzzk_chatFilter["channelName"]]: #chzzk_chatFilter에 없는 사람 채팅은 제거
                     return
@@ -269,7 +269,7 @@ class chzzk_chat_message:
 
                 if msg and msg[0] in [">"]:
                     msg = "/" + msg
-                chzzkChat.chzzk_chat_msg_List.append([nickname, msg, chat_data.get('uid') or chat_data.get('userId')])
+                chzzkChat.chzzk_chat_msg_List.append([nickname, msg, chat_type, chat_data.get('uid') or chat_data.get('userId')])
 
             except Exception as e:
                 asyncio.create_task(async_errorPost(f"error process_message {e}"))
@@ -334,10 +334,10 @@ class chzzk_chat_message:
     async def make_chat_list_of_urls(self, init: initVar, chzzkChat: chzzkChatData):
         result_urls = []
         try:
-            name, chat, uid = chzzkChat.chzzk_chat_msg_List.pop(0)
+            name, chat, chat_type, uid = chzzkChat.chzzk_chat_msg_List.pop(0)
 
             chzzkName = init.chzzkIDList.loc[chzzkChat.chzzkID, 'channelName']
-            print(f"{datetime.now()} post message [채팅 - {chzzkName}]{name}: {chat} {datetime.now()}")
+            print(f"{datetime.now()} post message [{chat_type} - {chzzkName}]{name}: {chat} {datetime.now()}")
 
             message = await self.make_thumbnail_url(init, name, chat, chzzkChat.chzzkID, uid)
             
@@ -367,7 +367,7 @@ class chzzk_chat_message:
             # 원본 리스트를 직접 순회하면서 처리
             while chzzkChat.chzzk_chat_msg_List:
                 # 첫 번째 메시지 가져오기
-                name, chat, channelID, uid = chzzkChat.chzzk_chat_msg_List[0]
+                name, chat, chat_type, channelID, uid = chzzkChat.chzzk_chat_msg_List[0]
                 key = (name, channelID, uid)
                 
                 # 이미 해당 사용자의 메시지가 있으면 추가, 없으면 새로 생성
@@ -519,25 +519,25 @@ def change_chatChannelId(init: initVar, chzzkChat: chzzkChatData):
     supabase = create_client(environ['supabase_url'], environ['supabase_key'])
     supabase.table('chzzk_titleData').upsert(supabase_data).execute()
        
-async def print_msg(init: initVar, chat_cmd, chat_data, chat_type, chzzkID, nickname, post_msg_TF=True):
+async def print_msg(init: initVar, chat_data, chat_type, chzzkID, nickname, post_msg_TF=True):
     chzzkName = init.chzzkIDList.loc[chzzkID, 'channelName']
     def format_message(msg_type, nickname, message, time, **kwargs):
         base = f"[{chat_type} - {chzzkName}] {nickname}"
         if msg_type == 'donation':
-            return f"{base} ({kwargs.get('amount')}치즈): {message}, {time}"
-        return f"{base}: {message}, {time}"
+            return f"{datetime.now()} {base} ({kwargs.get('amount')}치즈): {message}, {time}"
+        return f"{datetime.now()} {base}: {message}, {time}"
     
     try:
-        if chat_cmd == CHZZK_CHAT_CMD['donation']:
+        if chat_type == "후원":
             extras = loads(chat_data['extras'])
             if 'payAmount' in extras:
-                message = format_message('donation', nickname, chat_data['msg'], time, amount=extras['payAmount'])
+                message = format_message('donation', nickname, chat_data['msg'], chat_data['msgTime'], amount=extras['payAmount'])
             else:
                 return  # 도네이션 금액이 없는 경우 처리하지 않음
 
         else:
-            msg = chat_data['msg'] if chat_cmd == CHZZK_CHAT_CMD['chat'] else chat_data['content']
-            time = chat_data['msgTime'] if chat_cmd == CHZZK_CHAT_CMD['chat'] else chat_data['messageTime']
+            msg = chat_data['msg'] if chat_type == "채팅" else chat_data['content']
+            time = chat_data['msgTime'] if chat_type == "채팅" else chat_data['messageTime']
             time = datetime.fromtimestamp(time/1000)
             
             message = format_message('chat', nickname, msg, time)
@@ -548,7 +548,7 @@ async def print_msg(init: initVar, chat_cmd, chat_data, chat_type, chzzkID, nick
             print(message)
 
     except Exception as e:
-        if chat_cmd == CHZZK_CHAT_CMD['donation']:
+        if chat_type == "후원":
             asyncio.create_task(async_errorPost(f"{datetime.now()} it is test {e}.{loads(chat_data['extras'])}"))
 
 async def sendHi(init: initVar, chzzkChat: chzzkChatData, himent):
