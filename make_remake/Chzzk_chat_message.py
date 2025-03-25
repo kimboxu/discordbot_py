@@ -524,8 +524,8 @@ async def print_msg(init: initVar, chat_data, chat_type, chzzkID, nickname, post
     def format_message(msg_type, nickname, message, time, **kwargs):
         base = f"[{chat_type} - {chzzkName}] {nickname}"
         if msg_type == 'donation':
-            return f"{datetime.now()} {base} ({kwargs.get('amount')}치즈): {message}, {time}"
-        return f"{datetime.now()} {base}: {message}, {time}"
+            return f"{base} ({kwargs.get('amount')}치즈): {message}, {time}"
+        return f"{base}: {message}, {time}"
     
     try:
         if chat_type == "후원":
@@ -545,7 +545,7 @@ async def print_msg(init: initVar, chat_data, chat_type, chzzkID, nickname, post
         if post_msg_TF:
             asyncio.create_task(async_errorPost(message, errorPostBotURL=environ['donation_post_url']))
         else:
-            print(message)
+            print(f"{datetime.now()} {message}")
 
     except Exception as e:
         if chat_type == "후원":
