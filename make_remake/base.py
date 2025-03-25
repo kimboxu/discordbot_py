@@ -1,7 +1,9 @@
 import os
 import logging
 import asyncio
+import aiohttp
 from json import loads
+from queue import Queue
 from aiohttp import ClientSession, TCPConnector, ClientError
 import pandas as pd
 from requests import post
@@ -10,6 +12,7 @@ from dataclasses import dataclass
 from supabase import create_client
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
+from concurrent.futures import ThreadPoolExecutor
 
 class initVar:
 	load_dotenv()
@@ -72,6 +75,64 @@ class iconLinkData:
 	youtube_icon: str = os.environ['YOUTUBE_ICON']
 	cafe_icon: str = os.environ['CAFE_ICON']
 
+class AsyncLogger:
+    def __init__(self, bot_url, max_workers=3):
+        self.bot_url = bot_url
+        self.log_queue = Queue()
+        self.executor = ThreadPoolExecutor(max_workers=max_workers)
+        self.loop = asyncio.get_event_loop()
+        self._stop_event = asyncio.Event()
+
+    async def start_logging(self):
+        """로깅 프로세스 시작"""
+        self._stop_event.clear()
+        await self.loop.run_in_executor(
+            self.executor, 
+            self._process_log_queue
+        )
+
+    def _process_log_queue(self):
+        """백그라운드 스레드에서 로그 큐 처리"""
+        while not self._stop_event.is_set():
+            try:
+                # 0.1초마다 큐 확인
+                if not self.log_queue.empty():
+                    message = self.log_queue.get(timeout=0.1)
+                    asyncio.run(self._send_log(message))
+            except Exception as e:
+                print(f"Logging queue processing error: {e}")
+
+    async def _send_log(self, message):
+        """로그 메시지 비동기 전송"""
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                async with aiohttp.ClientSession() as session:
+                    data = {'content': message, "username": "error alarm"}
+                    async with session.post(
+                        self.bot_url, 
+                        json=data, 
+                        timeout=aiohttp.ClientTimeout(total=5)
+                    ) as response:
+                        if response.status == 429:
+                            retry_after = float(response.headers.get('Retry-After', 1))
+                            await asyncio.sleep(retry_after)
+                            continue
+                        return
+            except Exception as e:
+                print(f"Log sending attempt {attempt + 1} failed: {e}")
+                await asyncio.sleep(0.5 * (2 ** attempt))
+
+    def enqueue_log(self, message):
+        """로그 메시지 큐에 추가"""
+        self.log_queue.put(message)
+
+    async def stop(self):
+        """로깅 프로세스 정지"""
+        self._stop_event.set()
+        self.executor.shutdown(wait=True)
+  
+
 async def userDataVar(init: initVar):
 	try:
 		supabase = create_client(os.environ['supabase_url'], os.environ['supabase_key'])
@@ -103,7 +164,7 @@ async def userDataVar(init: initVar):
 		if "EOF occurred in violation of protocol" in str(e):
 			error_details += "\nSSL connection error occurred"
 			
-		errorPost(error_details)
+		asyncio.create_task(async_errorPost(error_details))
 
 async def update_flag(supabase, field, value):
 	#플래그 업데이트를 위한 헬퍼 함수
@@ -159,7 +220,7 @@ async def discordBotDataVars(init: initVar):
 			break
 			
 		except Exception as e:
-			errorPost(f"Error in discordBotDataVars: {e}")
+			asyncio.create_task(async_errorPost((f"Error in discordBotDataVars: {e}")))
 			if init.count != 0: break
 			await asyncio.sleep(0.5)
 
@@ -229,7 +290,7 @@ async def async_post_message(arr, max_retries=3, max_concurrent=5):
 		idx = userStateData['idx'][userStateData.index[userStateData["discordURL"]==url]].values[0]
 		supabase.table('userStateData').delete().eq('idx', idx).execute()
 		await update_flag(supabase, 'all_date', True)
-		errorPost(f"Non-existent url:{url}.idx:{idx}")
+		asyncio.create_task(async_errorPost(f"Non-existent url:{url}.idx:{idx}"))
 
 	semaphore = asyncio.Semaphore(max_concurrent)
 	async with ClientSession(connector=TCPConnector(ssl=False)) as session:
@@ -312,19 +373,19 @@ def subjectReplace(subject: str) -> str:
 	
 	return subject
 
-def errorPost(msg, errorPostBotURL=os.environ['errorPostBotURL']):
-	data = {
-		'content': msg,
-		'username': "error alarm"
-	}
+# def errorPost(msg, errorPostBotURL=os.environ['errorPostBotURL']):
+# 	data = {
+# 		'content': msg,
+# 		'username': "error alarm"
+# 	}
 	
-	try:
-		print(f"{datetime.now()} {msg}")
-		response = post(errorPostBotURL, json=data, timeout=3)
-		response.raise_for_status()  # HTTP 오류 확인
+# 	try:
+# 		print(f"{datetime.now()} {msg}")
+# 		response = post(errorPostBotURL, json=data, timeout=3)
+# 		response.raise_for_status()  # HTTP 오류 확인
 		
-	except Exception as e:
-		print(f"{datetime.now()} Post error: {e} {msg}")
+# 	except Exception as e:
+# 		print(f"{datetime.now()} Post error: {e} {msg}")
 
 async def async_errorPost(msg, errorPostBotURL=os.environ.get('errorPostBotURL')):
 	max_retries = 5
@@ -448,7 +509,7 @@ def twitch_getChannelOffStateData(offStateList, twitchID):
 				)
 		return None, None, None
 	except Exception as e:
-		errorPost(f"error getChannelOffStateData twitch {e}")
+		asyncio.create_task(async_errorPost(f"error getChannelOffStateData twitch {e}"))
 		return None, None, None
 
 def chzzk_getChannelOffStateData(stateData, chzzkID, channel_thumbnail = ""):
@@ -461,7 +522,7 @@ def chzzk_getChannelOffStateData(stateData, chzzkID, channel_thumbnail = ""):
 			)
 		return None, None, channel_thumbnail
 	except Exception as e: 
-		errorPost(f"error getChannelOffStateData chzzk {e}")
+		asyncio.create_task(async_errorPost(f"error getChannelOffStateData chzzk {e}"))
 		return None, None, channel_thumbnail
 
 def afreeca_getChannelOffStateData(stateData, afreecaID, channel_thumbnail = ""):
@@ -475,7 +536,7 @@ def afreeca_getChannelOffStateData(stateData, afreecaID, channel_thumbnail = "")
 			return live, title, thumbnail_url
 		return None, None, channel_thumbnail
 	except Exception as e: 
-		errorPost(f"error getChannelOffStateData afreeca {e}")
+		asyncio.create_task(async_errorPost(f"error getChannelOffStateData afreeca {e}"))
 
 def afreeca_getiflive(stateData):
 	try:
@@ -484,7 +545,7 @@ def afreeca_getiflive(stateData):
 			thumbnail_url = f"https:{thumbnail_url}"
 		return thumbnail_url
 	except Exception as e:
-		errorPost(f"error getChannelOffStateData {e}")
+		asyncio.create_task(async_errorPost(f"error getChannelOffStateData {e}"))
 		return None
 
 async def save_airing_data(init: initVar, platform, id_):
@@ -527,7 +588,7 @@ async def save_airing_data(init: initVar, platform, id_):
 	}
 
 	if platform not in platform_configs:
-		errorPost(f"Unsupported platform: {platform}")
+		asyncio.create_task(async_errorPost(f"Unsupported platform: {platform}"))
 		return
 	
 	table_name, data_func = platform_configs[platform]
@@ -538,7 +599,7 @@ async def save_airing_data(init: initVar, platform, id_):
 			supabase.table(table_name).upsert(data_func()).execute()
 			break
 		except Exception as e:
-			errorPost(f"error saving profile data {e}")
+			asyncio.create_task(async_errorPost(f"error saving profile data {e}"))
 			await asyncio.sleep(0.5)
 
 async def save_profile_data(init: initVar, platform, id):
@@ -572,7 +633,7 @@ async def save_profile_data(init: initVar, platform, id):
 	}
 
 	if platform not in platform_configs:
-		errorPost(f"Unsupported platform: {platform}")
+		asyncio.create_task(async_errorPost(f"Unsupported platform: {platform}"))
 		return
 
 	table_name, data_func = platform_configs[platform]
@@ -583,7 +644,7 @@ async def save_profile_data(init: initVar, platform, id):
 			supabase.table(table_name).upsert(data_func()).execute()
 			break
 		except Exception as e:
-			errorPost(f"error saving profile data {e}")
+			asyncio.create_task(async_errorPost(f"error saving profile data {e}"))
 			await asyncio.sleep(0.5)
 
 async def chzzk_saveVideoData(init: initVar, chzzkID, videoNo, videoTitle, publishDate): #save profile data
@@ -610,7 +671,7 @@ async def chzzk_saveVideoData(init: initVar, chzzkID, videoNo, videoTitle, publi
 			}).execute()
 			break
 		except Exception as e:
-			errorPost(f"error saving profile data {e}")
+			asyncio.create_task(async_errorPost(f"error saving profile data {e}"))
 			await asyncio.sleep(0.5)
 
 def saveCafeData(init: initVar, cafeID):
@@ -633,7 +694,7 @@ def saveCafeData(init: initVar, cafeID):
 		supabase.table('cafeData').upsert(cafe_data).execute()
 		
 	except Exception as e:
-		errorPost(f"error save cafe time {e}")
+		asyncio.create_task(async_errorPost(f"error save cafe time {e}"))
 	
 # def post_message(init, arr):
 # 	list_of_urls = []

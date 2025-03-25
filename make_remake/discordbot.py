@@ -35,7 +35,7 @@ async def main_loop(init: base.initVar, c_chzzk_live_message: chzzk_live_message
             base.fCount(init)
 
         except Exception as e:
-            base.errorPost(f"Error in main loop: {str(e)}")
+            asyncio.create_task(base.async_errorPost(f"Error in main loop: {str(e)}"))
             init = base.initVar()
             await base.discordBotDataVars(init)
             chzzkLive = base.chzzkLiveData(livePostList=[])

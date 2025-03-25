@@ -43,7 +43,7 @@ class chzzk_live_message():
 						await self._handle_offline_status(init, chzzkLive, chzzkID, title, offState)
 
 		except Exception as e:
-			base.errorPost(f"testerror get stateData chzzk live{e}.{chzzkID}.{str(offState)}")
+			asyncio.create_task(base.async_errorPost(f"testerror get stateData chzzk live{e}.{chzzkID}.{str(offState)}"))
 			if str(offState).find("error") != -1:
 				len(1)
 
@@ -106,7 +106,7 @@ class chzzk_live_message():
 				list_of_urls = self.make_offline_list_of_urls(init, chzzkID, json)
 				asyncio.create_task(base.async_post_message(list_of_urls))
 		except Exception as e:
-			base.errorPost(f"postLiveMSG {e}")
+			asyncio.create_task(base.async_errorPost(f"postLiveMSG {e}"))
 			chzzkLive.livePostList.clear()
 	
 	def getChzzkDataList(self, init: base.initVar):
@@ -303,7 +303,7 @@ class chzzk_live_message():
 				return thumbnail[frontIndex:thumbnail.index(".png") + 4]
 			return None
 		except Exception as e:
-			base.errorPost(f"{datetime.now()} wait make thumbnail2 {e}")
+			asyncio.create_task(base.async_errorPost(f"{datetime.now()} wait make thumbnail2 {e}"))
 			return None
 
 

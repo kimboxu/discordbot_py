@@ -8,7 +8,7 @@ from urllib.parse import quote
 from dataclasses import dataclass
 from Chzzk_live_message import chzzk_getLink
 from Afreeca_live_message import afreeca_getLink
-from base import getChzzkHeaders, saveCafeData, errorPost, async_post_message, subjectReplace, getChzzkCookie, afreeca_getChannelOffStateData, chzzk_getChannelOffStateData, get_message, cafeVarData, iconLinkData, initVar
+from base import getChzzkHeaders, saveCafeData, async_errorPost, async_post_message, subjectReplace, getChzzkCookie, afreeca_getChannelOffStateData, chzzk_getChannelOffStateData, get_message, cafeVarData, iconLinkData, initVar
 
 @dataclass
 class CafePostData:
@@ -33,7 +33,7 @@ class getCafePostTitle:
                     await self.postCafe(init, cafe_posts, cafeID)
                     
             except Exception as e:
-                errorPost(f"error cafe {cafeID}.{e}")
+                asyncio.create_task(async_errorPost(f"error cafe {cafeID}.{e}"))
 
     async def getCafeDataDic(self, init: initVar, cafeID)-> list:
         cafe_posts = []  
@@ -137,7 +137,7 @@ class getCafePostTitle:
             saveCafeData(init, channelID)
             
         except Exception as e:
-            errorPost(f"error postCafe {e}")
+            asyncio.create_task(async_errorPost(f"error postCafe {e}"))
 
     def create_cafe_json(self, init: initVar, post_data: CafePostData) -> dict:
         def getTime(timestamp):
@@ -211,7 +211,7 @@ class getCafePostTitle:
             return thumbnail_url
 
         except Exception as e: 
-            errorPost(f"error CateJson file {e}")
+            asyncio.create_task(async_errorPost(f"error CateJson file {e}"))
             return current_thumbnail
     
 # 사용 예:

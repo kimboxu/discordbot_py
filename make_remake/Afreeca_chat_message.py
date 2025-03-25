@@ -189,7 +189,7 @@ class AfreecaChat:
             user_nick = stateData['station']['user_nick']
             _, _, thumbnail_url = base.afreeca_getChannelOffStateData(stateData, stateData["station"]["user_id"])
         except Exception as e:
-            base.errorPost(f"{datetime.now()} error station {e}")
+            asyncio.create_task(base.async_errorPost(f"{datetime.now()} error station {e}"))
             return 0
 
         if nickname != user_nick:
@@ -226,7 +226,7 @@ class AfreecaChat:
                     print(f"{datetime.now()} post chat")
                     post_msg_count += 1
         except Exception as e:
-            base.errorPost(f"error postChat: {str(e)}")
+            asyncio.create_task(base.async_errorPost(f"error postChat: {str(e)}"))
 
     async def make_chat_list_of_urls(self, init: base.initVar, chatDic, chatDicKey):
         name, channelID, thumbnail_url = chatDicKey
@@ -245,11 +245,11 @@ class AfreecaChat:
                 name in init.userStateData.loc[discordWebhookURL, "chat_user_json"].get(channelID, [])
             ]
         except KeyError as e:
-            base.errorPost(f"KeyError in make_chat_list_of_urls: {str(e)}")
+            asyncio.create_task(base.async_errorPost(f"KeyError in make_chat_list_of_urls: {str(e)}"))
         except AttributeError as e:
-            base.errorPost(f"AttributeError in make_chat_list_of_urls: {str(e)}")
+            asyncio.create_task(base.async_errorPost(f"AttributeError in make_chat_list_of_urls: {str(e)}"))
         except Exception as e:
-            base.errorPost(f"Unexpected error in make_chat_list_of_urls: {str(e)}")
+            asyncio.create_task(base.async_errorPost(f"Unexpected error in make_chat_list_of_urls: {str(e)}"))
         
         return []
     
@@ -274,7 +274,7 @@ class AfreecaChat:
                     afreecaChat.afreeca_chat_msg_List = afreecaChat.afreeca_chat_msg_List[1:]
             
         except Exception as e:
-            base.errorPost(f"error addChat {e}")
+            asyncio.create_task(base.async_errorPost(f"error addChat {e}"))
             return chatDic
         return chatDic
 

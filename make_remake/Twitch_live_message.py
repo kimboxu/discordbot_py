@@ -13,7 +13,7 @@ class twitch_live_message():
 		if len(init.iflivePostList["twitch"]):
 			for i in range(len(init.iflivePostList["twitch"])):
 				(_, live, message, _, _, _) = init.iflivePostList["twitch"][i]
-				if live == "CLOSE" and message == "방제 변경": await self.addMSGList(init); base.errorPost("test")
+				if live == "CLOSE" and message == "방제 변경": await self.addMSGList(init); asyncio.create_task(base.async_errorPost("test"))
 		await self.postLiveMSG(init)
 
 	async def addMSGList(self, init): #if online, send to message
@@ -49,7 +49,7 @@ class twitch_live_message():
 						init.ifPostLiveCountEnd[twitchID] = init.ifPostLiveCountNum
 						init.changeTitle[twitchID] = init.ifPostLiveCountNum
 		except: 
-			base.errorPost(f"error get stateData .{twitchID}.{offState}.")
+			asyncio.create_task(base.async_errorPost(f"error get stateData .{twitchID}.{offState}."))
 			if offState.find("error") != -1: len(1)
 
 	async def postLiveMSG(self, init):
@@ -68,7 +68,7 @@ class twitch_live_message():
 				print(f"{datetime.now()} offLine {init.twitchIDList.loc[twitchID, 'channelName']}")
 				list_of_urls = self.make_offline_list_of_urls(init, twitchID, json)
 				asyncio.create_task(base.async_post_message(list_of_urls))
-		except: base.errorPost("postLiveMSG");init.iflivePostList["twitch"] = []
+		except: asyncio.create_task(base.async_errorPost("postLiveMSG"));init.iflivePostList["twitch"] = []
 
 	def getTwitchDataList(self, init):
 		list_of_offState = []
@@ -132,7 +132,7 @@ class twitch_live_message():
 				except: 
 					print(f"{datetime.now()} wait make thumbnail")
 					await asyncio.sleep(0.1)
-			except: base.errorPost("error stateData")
+			except: asyncio.create_task(base.async_errorPost("error stateData"))
 		return started_at, viewer_count, thumbnail
 
 	def get_online_state_json(self, init, twitchID, message, title, url, started_at, thumbnail, viewer_count):
@@ -217,7 +217,7 @@ class twitch_live_message():
 				"avatar_url": init.twitchIDList.loc[twitchID, 'channel_thumbnail'],}
 		thumbnail  = post(environ['recvThumbnailURL'], files=file, data=data, timeout=3)
 		try: remove('explain.png')
-		except: base.errorPost("error png")
+		except: asyncio.create_task(base.async_errorPost("error png"))
 		frontIndex = thumbnail.text.index('"proxy_url"')
 		thumbnail  = thumbnail.text[frontIndex:]
 		frontIndex = thumbnail.index('https://media.discordap')

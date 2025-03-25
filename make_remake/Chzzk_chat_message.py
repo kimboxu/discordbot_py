@@ -10,7 +10,7 @@ from json import loads, dumps, JSONDecodeError
 from dataclasses import dataclass
 from supabase import create_client
 from cmd_type import CHZZK_CHAT_CMD
-from base import errorPost, getChzzkHeaders, getChzzkCookie, async_post_message, async_errorPost, should_terminate, timer, initVar, if_after_time
+from base import getChzzkHeaders, getChzzkCookie, async_post_message, async_errorPost, should_terminate, timer, initVar, if_after_time
 
 @dataclass
 class chzzkChatData:
@@ -55,7 +55,7 @@ class chzzk_chat_message:
 
                     await asyncio.gather(ping_task, receive_task)
                 except Exception as e:
-                    await async_errorPost(f"error chatMsg {e}")
+                    asyncio.create_task(async_errorPost(f"error chatMsg {e}"))
                     change_chzzk_chat_json(init, chzzkChat.chzzkID)
                 
     async def receive_message(self, init: initVar, chzzkChat: chzzkChatData):
@@ -84,27 +84,27 @@ class chzzk_chat_message:
                         change_chzzk_chat_json(init, chzzkChat.chzzkID)
                         close_timer = None
                         if not init.DO_TEST:
-                            await async_errorPost(
+                            asyncio.create_task(async_errorPost(
                                 f"{chzzkChat.chzzkID}: 재연결을 위해 종료되었습니다.",
                                 errorPostBotURL=environ['chat_post_url']
-                            )
+                            ))
                         break
 
                     # 종료 조건 체크
                     if close_timer and close_timer._result == "CLOSE":
                         change_chzzk_chat_json(init, chzzkChat.chzzkID)
                         if not init.DO_TEST:
-                            await async_errorPost(
+                            asyncio.create_task(async_errorPost(
                                 f"{chzzkChat.chzzkID}: 연결이 정상적으로 종료되었습니다.",
                                 errorPostBotURL=environ['chat_post_url']
-                            )
+                            ))
                         break
                     
                     # 주기적으로 상태 확인
                     await asyncio.sleep(1)
                     
                 except Exception as e:
-                    await async_errorPost(f"error receive_message {e}")
+                    asyncio.create_task(async_errorPost(f"error receive_message {e}"))
         finally:
             # 종료 시 태스크 정리
             if receiver_task and not receiver_task.done():
@@ -158,7 +158,7 @@ class chzzk_chat_message:
                     
             except Exception as e:
                 print(f"{datetime.now()} Error in message_receiver: {e}")
-                await async_errorPost(f"Error in message_receiver: {e}")
+                asyncio.create_task(async_errorPost(f"Error in message_receiver: {e}"))
                 await asyncio.sleep(1)  # 예외 발생 시 잠시 대기
 
     async def message_processor(self, init: initVar, chzzkChat: chzzkChatData, message_queue: asyncio.Queue):
@@ -186,7 +186,7 @@ class chzzk_chat_message:
                     if chat_cmd != CHZZK_CHAT_CMD['donation'] and raw_message['tid'] is None:
                         bdy = raw_message.get('bdy', {})
                         if message := bdy.get('message'):
-                            await async_errorPost(str(message))
+                            asyncio.create_task(async_errorPost(str(message)))
                         continue
 
                     # 임시 제한 처리
@@ -215,113 +215,16 @@ class chzzk_chat_message:
                             chzzkChat.chat_event.set()
                     
                 except Exception as e:
-                    await async_errorPost(f"Error processing message: {e}, {str(raw_message)}")
+                    asyncio.create_task(async_errorPost(f"Error processing message: {e}, {str(raw_message)}"))
                 
                 # 큐 작업 완료 신호
                 message_queue.task_done()
                 
             except Exception as e:
                 print(f"{datetime.now()} Error in message_processor: {e}")
-                await async_errorPost(f"Error in message_processor: {e}")
+                asyncio.create_task(async_errorPost(f"Error in message_processor: {e}"))
                 await asyncio.sleep(0.5)  # 예외 발생 시 잠시 대기
-
-
-    # async def getChatList(self, init: initVar, chzzkChat: chzzkChatData):  
-    #     chzzk_connect_count(init, chzzkChat, 1)
-    #     try:
-    #         # raw_message = await self.f_raw_message(init, chzzkID)
-    #         raw_message = await asyncio.wait_for(
-    #             self.f_raw_message(init, chzzkChat), 
-    #             timeout=10
-    #         )
-    #         if not raw_message:
-    #             return
-            
-    #         chat_cmd = raw_message['cmd']
-
-    #         if chat_cmd == CHZZK_CHAT_CMD['ping']: 
-    #             await chzzkChat.sock.send(dumps(CHZZK_CHAT_DICT(chzzkChat, "pong")))
-    #             return
-
-    #         # 채팅 타입 결정
-    #         chat_type = {
-    #             CHZZK_CHAT_CMD['chat']: '채팅',
-    #             CHZZK_CHAT_CMD['request_chat']: '채팅',
-    #             CHZZK_CHAT_CMD['donation']: '후원'
-    #         }.get(chat_cmd, '모름')
-
-    #         # 에러 체크
-    #         if chat_cmd != CHZZK_CHAT_CMD['donation'] and raw_message['tid'] is None:
-    #             bdy = raw_message.get('bdy', {})
-    #             if message := bdy.get('message'):
-    #                 errorPost(str(message))
-    #             return
-
-    #         # 임시 제한 처리
-    #         bdy = raw_message.get('bdy', {})
-    #         if isinstance(bdy, dict) and bdy.get('type') == 'TEMPORARY_RESTRICT':
-    #             duration = bdy.get('duration', 30)
-    #             print(f"{datetime.now()} 임시 제한 상태입니다. {duration}초 동안 대기합니다.")
-    #             await asyncio.sleep(duration)
-    #             return
-            
-            
-    #         # 메시지 리스트 처리
-    #         if isinstance(bdy, dict) and 'messageList' in bdy:
-    #             chat_data = bdy['messageList']
-    #             chzzk_chat_list = [msg for msg in chat_data]
-    #         else:
-    #             chat_data = bdy if isinstance(bdy, list) else [bdy]
-    #             chzzk_chat_list = [msg for msg in chat_data]
-
-    #         if chzzk_chat_list:
-    #             await self.process_message(init, chzzkChat, chat_cmd, chzzk_chat_list, chat_type)
-            
-    #     except asyncio.TimeoutError:
-    #         print(f"{datetime.now()} Timeout occurred in getChatList for chzzkID: {chzzkChat.chzzkID}")
-    #     except Exception as e:
-    #         errorPost(f"error chatMsg3333 {e}.{str(raw_message)}")
-
-    # async def f_raw_message(self, init: initVar, chzzkChat: chzzkChatData):
-    #     try:
-    #         # WebSocket 연결 상태 확인 추가
-    #         if chzzkChat.sock.closed:
-    #             chzzkChat.Join_count += 200
-    #             return None
-            
-    #         raw_message = await asyncio.wait_for(chzzkChat.sock.recv(), timeout=2)
-    #         chzzkChat.Join_count = 0
-    #         return loads(raw_message)
-
-    #     except asyncio.TimeoutError:
-    #         if init.chzzk_titleData.loc[chzzkChat.chzzkID,'live_state'] == "OPEN":
-    #             chzzkChat.Join_count += 1
-    #             await asyncio.sleep(0.05)
-    #         return None
-
-    #     except (JSONDecodeError, ConnectionError, RuntimeError, websockets.exceptions.ConnectionClosed) as e:
-    #         if init.chzzk_titleData.loc[chzzkChat.chzzkID,'live_state'] == "OPEN":
-    #             chzzkChat.Join_count += 1
-    #             print(f"{datetime.now()} Join_count{chzzkChat.chzzkID} 2.{chzzkChat.Join_count}.{e}")
-                
-    #             # 연결 관련 오류 처리 개선
-    #             if (isinstance(e, (JSONDecodeError, ConnectionError, websockets.exceptions.ConnectionClosed)) 
-    #                 or str(e) == "socket is already closed." 
-    #                 or "no close frame received or sent" in str(e)):
-    #                 chzzkChat.Join_count += 200
-    #                 try:
-    #                     await chzzkChat.sock.close()
-    #                 except:
-    #                     pass
-    #                 await asyncio.sleep(0.05)
-    #         return None
-    #     except Exception as e:
-    #         if init.chzzk_titleData.loc[chzzkChat.chzzkID,'live_state'] == "OPEN":
-    #             chzzkChat.Join_count += 1
-    #             print(f"{datetime.now()} Join_count{chzzkChat.chzzkID} 3.{chzzkChat.Join_count}.{e}")
-    #             await asyncio.sleep(0.05)
-    #         return None
-            
+         
     def get_nickname(self, chat_data):
         if chat_data['extras'] is None or loads(chat_data['extras']).get('styleType', {}) in [1, 2, 3]:
             return None
@@ -369,7 +272,7 @@ class chzzk_chat_message:
                 chzzkChat.chzzk_chat_msg_List.append([nickname, msg, chat_data.get('uid') or chat_data.get('userId')])
 
             except Exception as e:
-                await async_errorPost(f"error process_message {e}")
+                asyncio.create_task(async_errorPost(f"error process_message {e}"))
 
     async def postChat(self, init: initVar, chzzkChat: chzzkChatData):
         # Event 객체가 없으면 생성
@@ -388,7 +291,8 @@ class chzzk_chat_message:
                 chzzkChat.chat_event.clear()
                 
             except Exception as e:
-                errorPost(f"error postChat: {str(e)}")
+                
+                asyncio.create_task(async_errorPost(f"error postChat: {str(e)}"))
                 # 오류가 발생해도 이벤트를 초기화
                 chzzkChat.chat_event.clear()
 
@@ -406,12 +310,12 @@ class chzzk_chat_message:
                         timeout=30  # 30초 타임아웃
                     )
                 except asyncio.TimeoutError:
-                    errorPost("Message sending timed out")
+                    asyncio.create_task(async_errorPost("Message sending timed out"))
                 except Exception as e:
-                    errorPost(f"Error sending messages: {e}")
+                    asyncio.create_task(async_errorPost(f"Error sending messages: {e}"))
             
         except Exception as e:
-            errorPost(f"Error in process_chat_messages: {e}")
+            asyncio.create_task(async_errorPost(f"Error in process_chat_messages: {e}"))
 
     async def ping(self, init: initVar, chzzkChat: chzzkChatData):
         start_timer = None
@@ -422,7 +326,7 @@ class chzzk_chat_message:
                     await chzzkChat.sock.send(dumps(CHZZK_CHAT_DICT(chzzkChat, "pong")))
                     start_timer = None
             except Exception as e:
-                await async_errorPost(f"error pong {e}")
+                asyncio.create_task(async_errorPost(f"error pong {e}"))
             await asyncio.sleep(0.5)
         
         print(f"{chzzkChat.chzzkID} chat pong 종료")
@@ -433,7 +337,7 @@ class chzzk_chat_message:
             name, chat, uid = chzzkChat.chzzk_chat_msg_List.pop(0)
 
             chzzkName = init.chzzkIDList.loc[chzzkChat.chzzkID, 'channelName']
-            print(f"{datetime.now()} post message [채팅 - {chzzkName}]{name}: {chat}")
+            print(f"{datetime.now()} post message [채팅 - {chzzkName}]{name}: {chat} {datetime.now()}")
 
             message = await self.make_thumbnail_url(init, name, chat, chzzkChat.chzzkID, uid)
             
@@ -452,7 +356,7 @@ class chzzk_chat_message:
                 
             return result_urls
         except Exception as e:
-            errorPost(f"Error in make_chat_list_of_urls: {type(e).__name__}: {str(e)}")
+            asyncio.create_task(async_errorPost(f"Error in make_chat_list_of_urls: {type(e).__name__}: {str(e)}"))
             return result_urls
 
     def addChat(self, chzzkChat: chzzkChatData):
@@ -476,7 +380,7 @@ class chzzk_chat_message:
                 chzzkChat.chzzk_chat_msg_List.pop(0)
                 
         except Exception as e:
-            errorPost(f"addChat 함수 실행 중 오류 발생: {e}")
+            asyncio.create_task(async_errorPost(f"addChat 함수 실행 중 오류 발생: {e}"))
         
         return chatDic
 
@@ -517,11 +421,11 @@ class chzzk_chat_message:
                 
             except (aiohttp.ClientError, asyncio.TimeoutError) as e:
                 await asyncio.sleep(0.05)
-                errorPost(f"error make thumbnail url {name}.{chat}.(attempt {attempt + 1}/3): {str(e)}")
+                asyncio.create_task(async_errorPost(f"error make thumbnail url {name}.{chat}.(attempt {attempt + 1}/3): {str(e)}"))
                 
             except Exception as e:
                 await asyncio.sleep(0.05)
-                errorPost(f"unexpected error in make thumbnail url: {str(e)}")
+                asyncio.create_task(async_errorPost(f"unexpected error in make thumbnail url: {str(e)}"))
         else:
             thumbnail_url = environ['default_thumbnail']
 
@@ -532,6 +436,7 @@ class chzzk_chat_message:
     def chzzk_getLink(self, uid):
         return f'https://api.chzzk.naver.com/service/v1/channels/{uid}'
     
+  
 def change_chzzk_chat_json(init: initVar, chzzkID, chzzkID_chat_TF = True):
     init.chat_json[chzzkID] = chzzkID_chat_TF
     supabase = create_client(environ['supabase_url'], environ['supabase_key'])
@@ -550,7 +455,7 @@ async def connect(chzzkChat: chzzkChatData, TF = 0):
     sock_response = loads(await chzzkChat.sock.recv())
 
     # if TF == 2:
-    await async_errorPost(f"{chzzkChat.chzzkID} 연결 완료 {chzzkChat.cid}", errorPostBotURL=environ['chat_post_url'])
+    asyncio.create_task(async_errorPost(f"{chzzkChat.chzzkID} 연결 완료 {chzzkChat.cid}", errorPostBotURL=environ['chat_post_url']))
     # else: 
     #     print(f"{datetime.now()} {chzzkID} 연결 완료 {chzzkChat.cid}")
 
@@ -595,7 +500,7 @@ def if_chzzk_Join(init: initVar, chzzkChat: chzzkChatData) -> int:
         if chzzkChat.Join_count >= chzzkChat.joinChatCount or chzzkChat.chzzk_chat_count == 0 or init.chat_json[chzzkChat.chzzkID]:
             return 1
         
-    except Exception as e: errorPost(f"error if_chzzk_Join {chzzkChat.chzzkID}.{e}")
+    except Exception as e: asyncio.create_task(async_errorPost(f"error if_chzzk_Join {chzzkChat.chzzkID}.{e}"))
     return 0
 
 def change_chatChannelId(init: initVar, chzzkChat: chzzkChatData):
@@ -616,43 +521,41 @@ def change_chatChannelId(init: initVar, chzzkChat: chzzkChatData):
        
 async def print_msg(init: initVar, chat_cmd, chat_data, chat_type, chzzkID, nickname, post_msg_TF=True):
     chzzkName = init.chzzkIDList.loc[chzzkID, 'channelName']
-    def format_message(msg_type, nickname, message, **kwargs):
+    def format_message(msg_type, nickname, message, time, **kwargs):
         base = f"[{chat_type} - {chzzkName}] {nickname}"
         if msg_type == 'donation':
-            return f"{base} ({kwargs.get('amount')}치즈): {message}"
-        return f"{base}: {message}"
-
+            return f"{base} ({kwargs.get('amount')}치즈): {message}, {time}"
+        return f"{base}: {message}, {time}"
+    
     try:
         if chat_cmd == CHZZK_CHAT_CMD['donation']:
             extras = loads(chat_data['extras'])
             if 'payAmount' in extras:
-                message = format_message('donation', nickname, chat_data['msg'], amount=extras['payAmount'])
+                message = format_message('donation', nickname, chat_data['msg'], time, amount=extras['payAmount'])
             else:
                 return  # 도네이션 금액이 없는 경우 처리하지 않음
-                
+
         else:
             msg = chat_data['msg'] if chat_cmd == CHZZK_CHAT_CMD['chat'] else chat_data['content']
             time = chat_data['msgTime'] if chat_cmd == CHZZK_CHAT_CMD['chat'] else chat_data['messageTime']
             time = datetime.fromtimestamp(time/1000)
             
-            message = format_message('chat', nickname, msg)
-            if not post_msg_TF:
-                message = f"{datetime.now()} {message}, {time}"
-
+            message = format_message('chat', nickname, msg, time)
+            
         if post_msg_TF:
-            await async_errorPost(message, errorPostBotURL=environ['donation_post_url'])
+            asyncio.create_task(async_errorPost(message, errorPostBotURL=environ['donation_post_url']))
         else:
             print(message)
 
     except Exception as e:
         if chat_cmd == CHZZK_CHAT_CMD['donation']:
-            await async_errorPost(f"{datetime.now()} it is test {e}.{loads(chat_data['extras'])}")
+            asyncio.create_task(async_errorPost(f"{datetime.now()} it is test {e}.{loads(chat_data['extras'])}"))
 
 async def sendHi(init: initVar, chzzkChat: chzzkChatData, himent):
     if if_chzzk_Join(init, chzzkChat) == 2:
         async with websockets.connect('wss://kr-ss3.chat.naver.com/chat', timeout=3.0) as websocket:
             await connect(chzzkChat)
-        errorPost(f"send hi {init.chzzkIDList.loc[chzzkChat.chzzkID, 'channelName']} {chzzkChat.cid}")
+        asyncio.create_task(async_errorPost(f"send hi {init.chzzkIDList.loc[chzzkChat.chzzkID, 'channelName']} {chzzkChat.cid}"))
         send(chzzkChat, himent)
 
 def onAirChat(chzzkChat: chzzkChatData, message):
