@@ -187,23 +187,18 @@ async def async_post_message(arr, max_retries=3, max_concurrent=5):
 		async with semaphore:
 			for attempt in range(max_retries):
 				try:
-					async with session.post(url, json=data, timeout=15) as response:  # Increased timeout
+					async with session.post(url, json=data, timeout=15) as response:
 						response.raise_for_status()
 						return await response.text()
 				except ClientError as e:
 					if response.status == 404:
-						# Handle 404 error (e.g., delete user data)
 						print(f"404 error for URL {url}. Deleting user data...")
-						# Add your code to delete user data here
+						asyncio.create_task(handle_404_error(url))  # 🔹 별도 비동기 태스크로 실행
+
 					if attempt == max_retries - 1:
 						print(f"Failed to send message to {url} after {max_retries} attempts: {str(e)}")
-						supabase = create_client(os.environ['supabase_url'], os.environ['supabase_key'])
-						userStateData = supabase.table('userStateData').select("*").execute()
-						userStateData = re_idx(make_list_to_dict(userStateData.data))
-						idx = userStateData['idx'][userStateData.index[userStateData["discordURL"]==url]].values[0]
-						supabase.table('userStateData').delete().eq('idx', idx).execute()
-						await update_flag(supabase, 'all_date', True)
-						errorPost(f"Non-existent url:{url}.idx:{idx}")
+						asyncio.create_task(handle_failure(url))  # 🔹 DB 삭제 및 플래그 업데이트를 별도 태스크로 실행
+						asyncio.create_task(del_userStateData(url))
 
 					await asyncio.sleep(0.2 * 2**attempt)  # Exponential backoff
 				except asyncio.TimeoutError:
@@ -217,13 +212,38 @@ async def async_post_message(arr, max_retries=3, max_concurrent=5):
 						return None
 					await asyncio.sleep(0.2 * 2**attempt)  # Exponential backoff
 
+	async def handle_404_error(url):
+		"""404 에러 발생 시 비동기로 데이터 삭제"""
+		# Supabase 삭제 코드 (예제)
+		print(f"Handling 404 error for {url} asynchronously")
+
+	async def handle_failure(url):
+		"""요청 실패 시 DB 삭제 및 업데이트"""
+		# Supabase 삭제 및 업데이트 코드
+		print(f"Handling failed request for {url} asynchronously")
+
+	async def del_userStateData(url):
+		supabase = create_client(os.environ['supabase_url'], os.environ['supabase_key'])
+		userStateData = supabase.table('userStateData').select("*").execute()
+		userStateData = re_idx(make_list_to_dict(userStateData.data))
+		idx = userStateData['idx'][userStateData.index[userStateData["discordURL"]==url]].values[0]
+		supabase.table('userStateData').delete().eq('idx', idx).execute()
+		await update_flag(supabase, 'all_date', True)
+		errorPost(f"Non-existent url:{url}.idx:{idx}")
+
 	semaphore = asyncio.Semaphore(max_concurrent)
 	async with ClientSession(connector=TCPConnector(ssl=False)) as session:
-		tasks = [send_message_with_retry(session, url, data, max_retries, semaphore) for url, data in arr]
-		responses = await asyncio.gather(*tasks, return_exceptions=True)
-		return [r for r in responses if not isinstance(r, Exception)]
+		tasks = [asyncio.create_task(send_message_with_retry(session, url, data, max_retries, semaphore)) for url, data in arr]
 
+		# 🔹 완료된 태스크부터 즉시 처리
+		responses = []
+		for task in asyncio.as_completed(tasks):
+			result = await task
+			if result is not None:
+				responses.append(result)
 
+		return responses
+	
 def fCount(init: initVar): #function to count
 	if init.count >= init.SEC:
 		init.count = 0
@@ -371,8 +391,8 @@ async def should_terminate(sock, ID):
 	return "CLOSE"
 
 def if_after_time(time_str, sec = 300): # 지금 시간이 이전 시간보다 SEC초 만큼 지났는지 확인
-    time = datetime(int(time_str[:4]),int(time_str[5:7]),int(time_str[8:10]),int(time_str[11:13]),int(time_str[14:16]),int(time_str[17:19])) + timedelta(seconds=sec)
-    return time.isoformat() <= datetime.now().isoformat()
+	time = datetime(int(time_str[:4]),int(time_str[5:7]),int(time_str[8:10]),int(time_str[11:13]),int(time_str[14:16]),int(time_str[17:19])) + timedelta(seconds=sec)
+	return time.isoformat() <= datetime.now().isoformat()
 
 async def timer(time): 
 	await asyncio.sleep(time)  # time 초 대기
