@@ -251,7 +251,7 @@ class chzzk_chat_message:
             try:
                 if nickname is None:
                     continue
-                if not init.DO_TEST and chat_type == "후원" or nickname in [*init.chzzk_chatFilter["channelName"]]:
+                if not init.DO_TEST and (chat_type == "후원" or nickname in [*init.chzzk_chatFilter["channelName"]]):
                     asyncio.create_task(print_msg(init, chat_data, chat_type, chzzkChat.chzzkID, nickname))
 
                 if not(nickname in [*init.chzzk_chatFilter["channelName"]]):
