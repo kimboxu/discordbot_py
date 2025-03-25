@@ -382,22 +382,36 @@ class chzzk_chat_message:
             
             try:
                 if chzzkChat.chzzk_chat_msg_List:
-                    tasks = []
-                    list_of_urls = await self.make_chat_list_of_urls(init, chzzkChat)
-                    if list_of_urls:
-                        task = asyncio.create_task(async_post_message(list_of_urls))
-                        tasks.append(task)
-                    
-                    if tasks:
-                        await asyncio.gather(*tasks)
+                    # 메시지 처리를 백그라운드 태스크로 분리
+                    asyncio.create_task(self.process_chat_messages(init, chzzkChat))
                 
-                # 이벤트 초기화 (다음 메시지를 기다리기 위해)
                 chzzkChat.chat_event.clear()
                 
             except Exception as e:
                 errorPost(f"error postChat: {str(e)}")
                 # 오류가 발생해도 이벤트를 초기화
                 chzzkChat.chat_event.clear()
+
+    async def process_chat_messages(self, init: initVar, chzzkChat: chzzkChatData):
+        try:
+
+            # URL 생성
+            list_of_urls = await self.make_chat_list_of_urls(init, chzzkChat)
+            
+            if list_of_urls:
+                # 타임아웃 및 예외 처리를 포함한 메시지 전송
+                try:
+                    await asyncio.wait_for(
+                        async_post_message(list_of_urls), 
+                        timeout=30  # 30초 타임아웃
+                    )
+                except asyncio.TimeoutError:
+                    errorPost("Message sending timed out")
+                except Exception as e:
+                    errorPost(f"Error sending messages: {e}")
+            
+        except Exception as e:
+            errorPost(f"Error in process_chat_messages: {e}")
 
     async def ping(self, init: initVar, chzzkChat: chzzkChatData):
         start_timer = None
