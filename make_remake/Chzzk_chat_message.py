@@ -337,7 +337,7 @@ class chzzk_chat_message:
             name, chat, chat_type, uid = chzzkChat.chzzk_chat_msg_List.pop(0)
 
             chzzkName = init.chzzkIDList.loc[chzzkChat.chzzkID, 'channelName']
-            print(f"{datetime.now()} post message [{chat_type} - {chzzkName}]{name}: {chat} {datetime.now()}")
+            print(f"{datetime.now()} post message [{chat_type} - {chzzkName}]{name}: {chat}")
 
             message = await self.make_thumbnail_url(init, name, chat, chzzkChat.chzzkID, uid)
             
