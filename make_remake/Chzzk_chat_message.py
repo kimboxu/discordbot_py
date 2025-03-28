@@ -136,7 +136,7 @@ class chzzk_chat_message:
                 except asyncio.TimeoutError:
                     if init.chzzk_titleData.loc[chzzkChat.chzzkID, 'live_state'] == "OPEN":
                         chzzkChat.Join_count += 1
-                    asyncio.create_task(async_errorPost(f"Test.{chzzkChat.Join_count}.{chzzkChat.chzzkID}"))
+                    asyncio.create_task(async_errorPost(f"Test.{chzzkChat.Join_count}.{chzzkChat.chzzkID}.{datetime.now()}"))
                     # await asyncio.sleep(0.05)
                     continue
                     
@@ -154,7 +154,7 @@ class chzzk_chat_message:
                                 await chzzkChat.sock.close()
                             except:
                                 pass
-                    asyncio.create_task(async_errorPost(f"Test2 {chzzkChat.chzzkID}"))
+                    asyncio.create_task(async_errorPost(f"Test2 {chzzkChat.chzzkID}.{datetime.now()}"))
                     await asyncio.sleep(0.5)  # 에러 발생 시 약간 더 긴 대기 시간
                     continue
                     
