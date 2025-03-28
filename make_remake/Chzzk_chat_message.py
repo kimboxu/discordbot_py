@@ -137,7 +137,7 @@ class chzzk_chat_message:
                     if init.chzzk_titleData.loc[chzzkChat.chzzkID, 'live_state'] == "OPEN":
                         chzzkChat.Join_count += 1
                     asyncio.create_task(async_errorPost(f"Test.{chzzkChat.Join_count}.{chzzkChat.chzzkID}"))
-                    await asyncio.sleep(0.05)
+                    # await asyncio.sleep(0.05)
                     continue
                     
                 except (JSONDecodeError, ConnectionError, RuntimeError, websockets.exceptions.ConnectionClosed) as e:
