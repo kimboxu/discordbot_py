@@ -126,7 +126,7 @@ class chzzk_chat_message:
                 
                 # 논블로킹 방식으로 메시지 수신 시도
                 try:
-                    raw_message = await asyncio.wait_for(chzzkChat.sock.recv(), timeout=2)
+                    raw_message = await asyncio.wait_for(chzzkChat.sock.recv(), timeout=1)
                     chzzkChat.Join_count = 0
                     message_data = loads(raw_message)
                     
@@ -136,6 +136,7 @@ class chzzk_chat_message:
                 except asyncio.TimeoutError:
                     if init.chzzk_titleData.loc[chzzkChat.chzzkID, 'live_state'] == "OPEN":
                         chzzkChat.Join_count += 1
+                    asyncio.create_task(async_errorPost("Test"))
                     await asyncio.sleep(0.05)
                     continue
                     
@@ -153,13 +154,13 @@ class chzzk_chat_message:
                                 await chzzkChat.sock.close()
                             except:
                                 pass
+                    asyncio.create_task(async_errorPost("Test2"))
                     await asyncio.sleep(0.5)  # 에러 발생 시 약간 더 긴 대기 시간
                     continue
                     
             except Exception as e:
-                print(f"{datetime.now()} Error in message_receiver: {e}")
-                asyncio.create_task(async_errorPost(f"Error in message_receiver: {e}"))
-                await asyncio.sleep(1)  # 예외 발생 시 잠시 대기
+                print(f"{datetime.now()} Error details: {type(e)}, {e}")
+                asyncio.create_task(async_errorPost(f"Detailed error in message_receiver: {type(e)}, {e}"))
 
     async def message_processor(self, init: initVar, chzzkChat: chzzkChatData, message_queue: asyncio.Queue):
         """큐에서 메시지를 가져와 처리하는 함수"""
