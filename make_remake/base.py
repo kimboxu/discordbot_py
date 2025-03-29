@@ -13,6 +13,7 @@ from supabase import create_client
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from concurrent.futures import ThreadPoolExecutor
+from discord_webhook_sender import DiscordWebhookSender
 
 class initVar:
 	load_dotenv()
@@ -64,7 +65,7 @@ class youtubeVideoData:
 
 @dataclass
 class cafeVarData:
-	cafeChannelIdx: int = 0
+	message_list: list
 
 @dataclass
 class iconLinkData:
@@ -164,7 +165,7 @@ async def userDataVar(init: initVar):
 		if "EOF occurred in violation of protocol" in str(e):
 			error_details += "\nSSL connection error occurred"
 			
-		asyncio.create_task(async_errorPost(error_details))
+		asyncio.create_task(DiscordWebhookSender()._log_error(error_details))
 
 async def update_flag(supabase, field, value):
 	#플래그 업데이트를 위한 헬퍼 함수
@@ -220,7 +221,7 @@ async def discordBotDataVars(init: initVar):
 			break
 			
 		except Exception as e:
-			asyncio.create_task(async_errorPost((f"Error in discordBotDataVars: {e}")))
+			asyncio.create_task(DiscordWebhookSender()._log_error((f"Error in discordBotDataVars: {e}")))
 			if init.count != 0: break
 			await asyncio.sleep(0.5)
 
@@ -243,68 +244,103 @@ def make_list_to_dict(data):
 		for key in data[0].keys()
 	})
 
-async def async_post_message(arr, max_retries=3, max_concurrent=5):
-	async def send_message_with_retry(session, url, data, max_retries, semaphore):
-		async with semaphore:
-			for attempt in range(max_retries):
-				try:
-					async with session.post(url, json=data, timeout=15) as response:
-						response.raise_for_status()
-						return await response.text()
-				except ClientError as e:
-					if response.status == 404:
-						print(f"404 error for URL {url}. Deleting user data...")
-						asyncio.create_task(handle_404_error(url))  # 🔹 별도 비동기 태스크로 실행
+# async def async_post_message(arr, max_retries=3, max_concurrent=5):
+# 	async def send_message_with_retry(session, url, data, max_retries, semaphore):
+# 		async with semaphore:
+# 			for attempt in range(max_retries):
+# 				try:
+# 					async with session.post(url, json=data, timeout=15) as response:
+# 						response.raise_for_status()
+# 						return await response.text()
+# 				except ClientError as e:
+# 					if response.status == 404:
+# 						print(f"404 error for URL {url}. Deleting user data...")
+# 						asyncio.create_task(handle_404_error(url))  # 🔹 별도 비동기 태스크로 실행
 
-					if attempt == max_retries - 1:
-						print(f"Failed to send message to {url} after {max_retries} attempts: {str(e)}")
-						asyncio.create_task(handle_failure(url))  # 🔹 DB 삭제 및 플래그 업데이트를 별도 태스크로 실행
-						asyncio.create_task(del_userStateData(url))
+# 					if attempt == max_retries - 1:
+# 						print(f"Failed to send message to {url} after {max_retries} attempts: {str(e)}")
+# 						asyncio.create_task(handle_failure(url))  # 🔹 DB 삭제 및 플래그 업데이트를 별도 태스크로 실행
+# 						asyncio.create_task(del_userStateData(url))
 
-					await asyncio.sleep(0.2 * 2**attempt)  # Exponential backoff
-				except asyncio.TimeoutError:
-					print(f"{datetime.now()} timeout send_message_with_retry {str(data)}")
-					if attempt == max_retries - 1:
-						return None
-					await asyncio.sleep(0.2 * 2**attempt)  # Exponential backoff
-				except Exception as e:
-					print(f"Unexpected error in send_message_with_retry: {e}")
-					if attempt == max_retries - 1:
-						return None
-					await asyncio.sleep(0.2 * 2**attempt)  # Exponential backoff
+# 					await asyncio.sleep(0.2 * 2**attempt)  # Exponential backoff
+# 				except asyncio.TimeoutError:
+# 					print(f"{datetime.now()} timeout send_message_with_retry {str(data)}")
+# 					if attempt == max_retries - 1:
+# 						return None
+# 					await asyncio.sleep(0.2 * 2**attempt)  # Exponential backoff
+# 				except Exception as e:
+# 					print(f"Unexpected error in send_message_with_retry: {e}")
+# 					if attempt == max_retries - 1:
+# 						return None
+# 					await asyncio.sleep(0.2 * 2**attempt)  # Exponential backoff
 
-	async def handle_404_error(url):
-		"""404 에러 발생 시 비동기로 데이터 삭제"""
-		# Supabase 삭제 코드 (예제)
-		print(f"Handling 404 error for {url} asynchronously")
+# 	async def handle_404_error(url):
+# 		"""404 에러 발생 시 비동기로 데이터 삭제"""
+# 		# Supabase 삭제 코드 (예제)
+# 		print(f"Handling 404 error for {url} asynchronously")
 
-	async def handle_failure(url):
-		"""요청 실패 시 DB 삭제 및 업데이트"""
-		# Supabase 삭제 및 업데이트 코드
-		print(f"Handling failed request for {url} asynchronously")
+# 	async def handle_failure(url):
+# 		"""요청 실패 시 DB 삭제 및 업데이트"""
+# 		# Supabase 삭제 및 업데이트 코드
+# 		print(f"Handling failed request for {url} asynchronously")
 
-	async def del_userStateData(url):
-		supabase = create_client(os.environ['supabase_url'], os.environ['supabase_key'])
-		userStateData = supabase.table('userStateData').select("*").execute()
-		userStateData = re_idx(make_list_to_dict(userStateData.data))
-		idx = userStateData['idx'][userStateData.index[userStateData["discordURL"]==url]].values[0]
-		supabase.table('userStateData').delete().eq('idx', idx).execute()
-		await update_flag(supabase, 'all_date', True)
-		asyncio.create_task(async_errorPost(f"Non-existent url:{url}.idx:{idx}"))
+# 	async def del_userStateData(url):
+# 		supabase = create_client(os.environ['supabase_url'], os.environ['supabase_key'])
+# 		userStateData = supabase.table('userStateData').select("*").execute()
+# 		userStateData = re_idx(make_list_to_dict(userStateData.data))
+# 		idx = userStateData['idx'][userStateData.index[userStateData["discordURL"]==url]].values[0]
+# 		supabase.table('userStateData').delete().eq('idx', idx).execute()
+# 		await update_flag(supabase, 'all_date', True)
+# 		asyncio.create_task(DiscordWebhookSender()._log_error(f"Non-existent url:{url}.idx:{idx}"))
 
-	semaphore = asyncio.Semaphore(max_concurrent)
-	async with ClientSession(connector=TCPConnector(ssl=False)) as session:
-		tasks = [asyncio.create_task(send_message_with_retry(session, url, data, max_retries, semaphore)) for url, data in arr]
+# 	semaphore = asyncio.Semaphore(max_concurrent)
+# 	async with ClientSession(connector=TCPConnector(ssl=False)) as session:
+# 		tasks = [asyncio.create_task(send_message_with_retry(session, url, data, max_retries, semaphore)) for url, data in arr]
 
-		# 🔹 완료된 태스크부터 즉시 처리
-		responses = []
-		for task in asyncio.as_completed(tasks):
-			result = await task
-			if result is not None:
-				responses.append(result)
+# 		# 🔹 완료된 태스크부터 즉시 처리
+# 		responses = []
+# 		for task in asyncio.as_completed(tasks):
+# 			result = await task
+# 			if result is not None:
+# 				responses.append(result)
 
-		return responses
-	
+# 		return responses
+
+# async def async_errorPost(msg, errorPostBotURL=os.environ.get('errorPostBotURL')):
+# 	max_retries = 5
+# 	base_delay = 0.3  # 초기 대기 시간 (초)
+
+# 	for attempt in range(max_retries):
+# 		try:
+# 			data = {'content': msg, "username": "error alarm"}
+# 			print(f"{datetime.now()} {msg}")
+			
+# 			if not errorPostBotURL:
+# 				print("Error: errorPostBotURL is not set")
+# 				return
+
+# 			async with ClientSession() as session:
+# 				async with session.post(errorPostBotURL, json=data, timeout=10) as response:
+# 					response_text = await response.text()
+# 					if response.status == 429:
+# 						retry_after = float(response.headers.get('Retry-After', 1))
+# 						await asyncio.sleep(retry_after)
+# 						continue
+# 					return  # 성공적으로 요청을 보냈거나, 429가 아닌 다른 에러 발생 시 함수 종료
+
+# 		except asyncio.TimeoutError:
+# 			print(f"{datetime.now()} Timeout error while posting: {msg}")
+# 			return None
+# 		except ClientError as client_error:
+# 			print(f"{datetime.now()} Client error: {client_error} - {msg}")
+# 		except Exception as e:
+# 			print(f"{datetime.now()} Unexpected error: {type(e).__name__}: {e} - {msg}")
+
+# 		# 재시도 전 대기
+# 		await asyncio.sleep(base_delay * (2 ** attempt))
+
+# 	print(f"Failed to post message after {max_retries} attempts: {msg}")
+
 def fCount(init: initVar): #function to count
 	if init.count >= init.SEC:
 		init.count = 0
@@ -373,55 +409,6 @@ def subjectReplace(subject: str) -> str:
 	
 	return subject
 
-# def errorPost(msg, errorPostBotURL=os.environ['errorPostBotURL']):
-# 	data = {
-# 		'content': msg,
-# 		'username': "error alarm"
-# 	}
-	
-# 	try:
-# 		print(f"{datetime.now()} {msg}")
-# 		response = post(errorPostBotURL, json=data, timeout=3)
-# 		response.raise_for_status()  # HTTP 오류 확인
-		
-# 	except Exception as e:
-# 		print(f"{datetime.now()} Post error: {e} {msg}")
-
-async def async_errorPost(msg, errorPostBotURL=os.environ.get('errorPostBotURL')):
-	max_retries = 5
-	base_delay = 0.3  # 초기 대기 시간 (초)
-
-	for attempt in range(max_retries):
-		try:
-			data = {'content': msg, "username": "error alarm"}
-			print(f"{datetime.now()} {msg}")
-			
-			if not errorPostBotURL:
-				print("Error: errorPostBotURL is not set")
-				return
-
-			async with ClientSession() as session:
-				async with session.post(errorPostBotURL, json=data, timeout=10) as response:
-					response_text = await response.text()
-					if response.status == 429:
-						retry_after = float(response.headers.get('Retry-After', 1))
-						await asyncio.sleep(retry_after)
-						continue
-					return  # 성공적으로 요청을 보냈거나, 429가 아닌 다른 에러 발생 시 함수 종료
-
-		except asyncio.TimeoutError:
-			print(f"{datetime.now()} Timeout error while posting: {msg}")
-			return None
-		except ClientError as client_error:
-			print(f"{datetime.now()} Client error: {client_error} - {msg}")
-		except Exception as e:
-			print(f"{datetime.now()} Unexpected error: {type(e).__name__}: {e} - {msg}")
-
-		# 재시도 전 대기
-		await asyncio.sleep(base_delay * (2 ** attempt))
-
-	print(f"Failed to post message after {max_retries} attempts: {msg}")
-
 def getTwitchHeaders(): 
 	twitch_Client_ID = os.environ['twitch_Client_ID']
 	twitch_Client_secret = os.environ['twitch_Client_secret']
@@ -454,6 +441,9 @@ async def should_terminate(sock, ID):
 def if_after_time(time_str, sec = 300): # 지금 시간이 이전 시간보다 SEC초 만큼 지났는지 확인
 	time = datetime(int(time_str[:4]),int(time_str[5:7]),int(time_str[8:10]),int(time_str[11:13]),int(time_str[14:16]),int(time_str[17:19])) + timedelta(seconds=sec)
 	return time.isoformat() <= datetime.now().isoformat()
+
+def if_last_chat(last_chat_time: datetime, sec = 300): #마지막 채팅을 읽어온지 sec초가 지났다면 True
+    return (last_chat_time + timedelta(seconds=sec)).isoformat() <= datetime.now().isoformat()
 
 async def timer(time): 
 	await asyncio.sleep(time)  # time 초 대기
@@ -509,7 +499,7 @@ def twitch_getChannelOffStateData(offStateList, twitchID):
 				)
 		return None, None, None
 	except Exception as e:
-		asyncio.create_task(async_errorPost(f"error getChannelOffStateData twitch {e}"))
+		asyncio.create_task(DiscordWebhookSender()._log_error(f"error getChannelOffStateData twitch {e}"))
 		return None, None, None
 
 def chzzk_getChannelOffStateData(stateData, chzzkID, channel_thumbnail = ""):
@@ -522,7 +512,7 @@ def chzzk_getChannelOffStateData(stateData, chzzkID, channel_thumbnail = ""):
 			)
 		return None, None, channel_thumbnail
 	except Exception as e: 
-		asyncio.create_task(async_errorPost(f"error getChannelOffStateData chzzk {e}"))
+		asyncio.create_task(DiscordWebhookSender()._log_error(f"error getChannelOffStateData chzzk {e}"))
 		return None, None, channel_thumbnail
 
 def afreeca_getChannelOffStateData(stateData, afreecaID, channel_thumbnail = ""):
@@ -536,7 +526,7 @@ def afreeca_getChannelOffStateData(stateData, afreecaID, channel_thumbnail = "")
 			return live, title, thumbnail_url
 		return None, None, channel_thumbnail
 	except Exception as e: 
-		asyncio.create_task(async_errorPost(f"error getChannelOffStateData afreeca {e}"))
+		asyncio.create_task(DiscordWebhookSender()._log_error(f"error getChannelOffStateData afreeca {e}"))
 
 def afreeca_getiflive(stateData):
 	try:
@@ -545,7 +535,7 @@ def afreeca_getiflive(stateData):
 			thumbnail_url = f"https:{thumbnail_url}"
 		return thumbnail_url
 	except Exception as e:
-		asyncio.create_task(async_errorPost(f"error getChannelOffStateData {e}"))
+		asyncio.create_task(DiscordWebhookSender()._log_error(f"error getChannelOffStateData {e}"))
 		return None
 
 async def save_airing_data(init: initVar, platform, id_):
@@ -588,7 +578,7 @@ async def save_airing_data(init: initVar, platform, id_):
 	}
 
 	if platform not in platform_configs:
-		asyncio.create_task(async_errorPost(f"Unsupported platform: {platform}"))
+		asyncio.create_task(DiscordWebhookSender()._log_error(f"Unsupported platform: {platform}"))
 		return
 	
 	table_name, data_func = platform_configs[platform]
@@ -599,7 +589,7 @@ async def save_airing_data(init: initVar, platform, id_):
 			supabase.table(table_name).upsert(data_func()).execute()
 			break
 		except Exception as e:
-			asyncio.create_task(async_errorPost(f"error saving profile data {e}"))
+			asyncio.create_task(DiscordWebhookSender()._log_error(f"error saving profile data {e}"))
 			await asyncio.sleep(0.5)
 
 async def save_profile_data(init: initVar, platform, id):
@@ -633,7 +623,7 @@ async def save_profile_data(init: initVar, platform, id):
 	}
 
 	if platform not in platform_configs:
-		asyncio.create_task(async_errorPost(f"Unsupported platform: {platform}"))
+		asyncio.create_task(DiscordWebhookSender()._log_error(f"Unsupported platform: {platform}"))
 		return
 
 	table_name, data_func = platform_configs[platform]
@@ -644,7 +634,7 @@ async def save_profile_data(init: initVar, platform, id):
 			supabase.table(table_name).upsert(data_func()).execute()
 			break
 		except Exception as e:
-			asyncio.create_task(async_errorPost(f"error saving profile data {e}"))
+			asyncio.create_task(DiscordWebhookSender()._log_error(f"error saving profile data {e}"))
 			await asyncio.sleep(0.5)
 
 async def chzzk_saveVideoData(init: initVar, chzzkID, videoNo, videoTitle, publishDate): #save profile data
@@ -671,7 +661,7 @@ async def chzzk_saveVideoData(init: initVar, chzzkID, videoNo, videoTitle, publi
 			}).execute()
 			break
 		except Exception as e:
-			asyncio.create_task(async_errorPost(f"error saving profile data {e}"))
+			asyncio.create_task(DiscordWebhookSender()._log_error(f"error saving profile data {e}"))
 			await asyncio.sleep(0.5)
 
 def saveCafeData(init: initVar, cafeID):
@@ -694,7 +684,7 @@ def saveCafeData(init: initVar, cafeID):
 		supabase.table('cafeData').upsert(cafe_data).execute()
 		
 	except Exception as e:
-		asyncio.create_task(async_errorPost(f"error save cafe time {e}"))
+		asyncio.create_task(DiscordWebhookSender()._log_error(f"error save cafe time {e}"))
 	
 # def post_message(init, arr):
 # 	list_of_urls = []

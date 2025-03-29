@@ -1,7 +1,8 @@
 import asyncio
 from os import environ
 from datetime import datetime
-from base import getChzzkHeaders, getChzzkCookie, chzzk_saveVideoData, async_errorPost, changeUTCtime, async_post_message, get_message, chzzkVideoData, iconLinkData
+from discord_webhook_sender import DiscordWebhookSender
+from base import getChzzkHeaders, getChzzkCookie, chzzk_saveVideoData, changeUTCtime, get_message, chzzkVideoData, iconLinkData
 
 class chzzk_video:
     async def chzzk_video(self, init, chzzkVideo: chzzkVideoData):
@@ -37,7 +38,7 @@ class chzzk_video:
                 try:
                     await self._process_video_data(init, chzzkVideo, stateData, chzzkID)
                 except Exception as e:
-                    asyncio.create_task(async_errorPost(f"error get stateData chzzk video.{chzzkID}.{e}."))
+                    asyncio.create_task(DiscordWebhookSender()._log_error(f"error get stateData chzzk video.{chzzkID}.{e}."))
 
     def _should_process_video(self, stateData, should_process):
         return should_process and stateData["code"] == 200
@@ -86,10 +87,11 @@ class chzzk_video:
             channel_name = init.chzzkIDList.loc[chzzkID, 'channelName']
             print(f"{datetime.now()} VOD upload {channel_name} {videoTitle}")
 
-            await async_post_message(make_list_of_urls(json_data))
+            asyncio.create_task(DiscordWebhookSender().send_messages(make_list_of_urls(json_data)))
+            # await async_post_message(make_list_of_urls(json_data))
 
         except Exception as e:
-            asyncio.create_task(async_errorPost(f"postLiveMSG {e}"))
+            asyncio.create_task(DiscordWebhookSender()._log_error(f"postLiveMSG {e}"))
             chzzkVideo.video_alarm_List.clear()
 
     def getChzzk_video_json(self, init, chzzkID, stateData):

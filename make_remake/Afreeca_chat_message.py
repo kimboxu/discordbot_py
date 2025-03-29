@@ -11,6 +11,7 @@ from datetime import datetime
 from dataclasses import dataclass
 from supabase import create_client
 from Afreeca_live_message import afreeca_getChannelStateData, afreeca_getLink
+from discord_webhook_sender import DiscordWebhookSender
 
 @dataclass
 class afreecaChatData:
@@ -73,7 +74,7 @@ class AfreecaChat:
                     time = init.afreeca_titleData.loc[afreecaID,'update_time']
                     time = datetime(int(time[:4]),int(time[5:7]),int(time[8:10]),int(time[11:13]),int(time[14:16]),int(time[17:19]))
                     chatChannelId = init.afreeca_titleData.loc[afreecaID, 'chatChannelId']
-                    if (datetime.now() - time).seconds < 60: asyncio.create_task(base.async_errorPost(f"{afreecaID} 연결 완료 {chatChannelId}", errorPostBotURL=environ['chat_post_url']))
+                    if (datetime.now() - time).seconds < 60: asyncio.create_task(DiscordWebhookSender()._log_error(f"{afreecaID} 연결 완료 {chatChannelId}", webhook_url=environ['chat_post_url']))
                     else: print(f"{datetime.now()} {afreecaID} 연결 완료 {chatChannelId}")
                     await asyncio.sleep(2)
                     await afreecaChat.sock.send(JOIN_PACKET)
@@ -124,17 +125,17 @@ class AfreecaChat:
                 close_timer = asyncio.create_task(base.should_terminate(afreecaChat.sock, afreecaID))
             elif close_timer and live_state == "OPEN":
                 self.change_afreeca_chat_json(init, afreecaID)
-                asyncio.create_task(base.async_errorPost(f"{afreecaID}: 재연결을 위해 정상적으로 종료되었습니다.", errorPostBotURL=environ['chat_post_url']))
+                asyncio.create_task(DiscordWebhookSender()._log_error(f"{afreecaID}: 재연결을 위해 정상적으로 종료되었습니다.", webhook_url=environ['chat_post_url']))
                 break
 
             if close_timer and close_timer._result == "CLOSE":
                 self.change_afreeca_chat_json(init, afreecaID)
-                asyncio.create_task(base.async_errorPost(f"{afreecaID}: 연결이 정상적으로 종료되었습니다.", errorPostBotURL=environ['chat_post_url']))
+                asyncio.create_task(DiscordWebhookSender()._log_error(f"{afreecaID}: 연결이 정상적으로 종료되었습니다.", webhook_url=environ['chat_post_url']))
                 break
 
             if (start_timer._result != "CLOSE" and count > RECONNECT_THRESHOLD) or init.chat_json[afreecaID] or count > MAX_RETRIES:
                 self.change_afreeca_chat_json(init, afreecaID)
-                asyncio.create_task(base.async_errorPost(f"afreeca chat reconnect {afreecaID}", errorPostBotURL=environ['chat_post_url']))
+                asyncio.create_task(DiscordWebhookSender()._log_error(f"afreeca chat reconnect {afreecaID}", webhook_url=environ['chat_post_url']))
                 break
 
             try:
@@ -153,11 +154,11 @@ class AfreecaChat:
                 count += 1
                 continue
             except websockets.exceptions.ConnectionClosed:
-                asyncio.create_task(base.async_errorPost(f"{afreecaID}: 연결이 정상적으로 종료되었습니다.", errorPostBotURL=environ['chat_post_url']))
+                asyncio.create_task(DiscordWebhookSender()._log_error(f"{afreecaID}: 연결이 정상적으로 종료되었습니다."), webhook_url=environ['chat_post_url'])
                 self.change_afreeca_chat_json(init, afreecaID)
                 break
             except Exception as e: 
-                asyncio.create_task(base.async_errorPost(f"{afreecaID} afreeca chat test except {e}"))
+                asyncio.create_task(DiscordWebhookSender()._log_error(f"{afreecaID} afreeca chat test except {e}"))
                 self.change_afreeca_chat_json(init, afreecaID)
                 break
 
@@ -169,11 +170,11 @@ class AfreecaChat:
         if len(messages) < 7 or messages[1] in ['-1', '', '1'] or len(messages[2]) == 0 or messages[2] in ["1"] or ("fw" in messages[2]):
             try:
                 if fafreeca_chat_TF(messages): 
-                    asyncio.create_task(base.async_errorPost(f"아프리카 chat recv messages {messages}", errorPostBotURL=environ['afreeca_chat_log_url']))
+                    asyncio.create_task(DiscordWebhookSender()._log_error(f"아프리카 chat recv messages {messages}", webhook_url=environ['chat_post_url']))
                 else:
                     return 0
             except: 
-                asyncio.create_task(base.async_errorPost(f"아프리카 chat decode_message2 {messages}", errorPostBotURL=environ['afreeca_chat_log_url']))
+                asyncio.create_task(DiscordWebhookSender()._log_error(f"아프리카 chat decode_message2 {messages}", webhook_url=environ['chat_post_url']))
             return count
         
         count = 0
@@ -189,7 +190,7 @@ class AfreecaChat:
             user_nick = stateData['station']['user_nick']
             _, _, thumbnail_url = base.afreeca_getChannelOffStateData(stateData, stateData["station"]["user_id"])
         except Exception as e:
-            asyncio.create_task(base.async_errorPost(f"{datetime.now()} error station {e}"))
+            asyncio.create_task(DiscordWebhookSender()._log_error(f"{datetime.now()} error station {e}"))
             return 0
 
         if nickname != user_nick:
@@ -218,7 +219,8 @@ class AfreecaChat:
                 for chatDicKey in chatDic:
                     list_of_urls = await self.make_chat_list_of_urls(init, chatDic, chatDicKey)
                     if list_of_urls:
-                        task = asyncio.create_task(base.async_post_message(list_of_urls))
+                        task = asyncio.create_task(DiscordWebhookSender().send_messages(list_of_urls))
+                        # task = asyncio.create_task(base.async_post_message(list_of_urls))
                         tasks.append(task)
                 
                 if tasks:
@@ -226,7 +228,7 @@ class AfreecaChat:
                     print(f"{datetime.now()} post chat")
                     post_msg_count += 1
         except Exception as e:
-            asyncio.create_task(base.async_errorPost(f"error postChat: {str(e)}"))
+            asyncio.create_task(DiscordWebhookSender()._log_error(f"error postChat: {str(e)}"))
 
     async def make_chat_list_of_urls(self, init: base.initVar, chatDic, chatDicKey):
         name, channelID, thumbnail_url = chatDicKey
@@ -245,11 +247,11 @@ class AfreecaChat:
                 name in init.userStateData.loc[discordWebhookURL, "chat_user_json"].get(channelID, [])
             ]
         except KeyError as e:
-            asyncio.create_task(base.async_errorPost(f"KeyError in make_chat_list_of_urls: {str(e)}"))
+            asyncio.create_task(DiscordWebhookSender()._log_error(f"KeyError in make_chat_list_of_urls: {str(e)}"))
         except AttributeError as e:
-            asyncio.create_task(base.async_errorPost(f"AttributeError in make_chat_list_of_urls: {str(e)}"))
+            asyncio.create_task(DiscordWebhookSender()._log_error(f"AttributeError in make_chat_list_of_urls: {str(e)}"))
         except Exception as e:
-            asyncio.create_task(base.async_errorPost(f"Unexpected error in make_chat_list_of_urls: {str(e)}"))
+            asyncio.create_task(DiscordWebhookSender()._log_error(f"Unexpected error in make_chat_list_of_urls: {str(e)}"))
         
         return []
     
@@ -274,7 +276,7 @@ class AfreecaChat:
                     afreecaChat.afreeca_chat_msg_List = afreecaChat.afreeca_chat_msg_List[1:]
             
         except Exception as e:
-            asyncio.create_task(base.async_errorPost(f"error addChat {e}"))
+            asyncio.create_task(DiscordWebhookSender()._log_error(f"error addChat {e}"))
             return chatDic
         return chatDic
 

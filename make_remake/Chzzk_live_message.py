@@ -5,6 +5,7 @@ from datetime import datetime
 from os import remove, environ
 from requests import post, get
 from urllib.request import urlretrieve
+from discord_webhook_sender import DiscordWebhookSender
 
 class chzzk_live_message():
 
@@ -43,7 +44,7 @@ class chzzk_live_message():
 						await self._handle_offline_status(init, chzzkLive, chzzkID, title, offState)
 
 		except Exception as e:
-			asyncio.create_task(base.async_errorPost(f"testerror get stateData chzzk live{e}.{chzzkID}.{str(offState)}"))
+			asyncio.create_task(DiscordWebhookSender()._log_error(f"testerror get stateData chzzk live{e}.{chzzkID}.{str(offState)}"))
 			if str(offState).find("error") != -1:
 				len(1)
 
@@ -99,14 +100,16 @@ class chzzk_live_message():
 					print(f"{datetime.now()} 현재 방제: {title}")
 
 				list_of_urls = self.make_online_list_of_urls(init, chzzkID, message, json)
-				asyncio.create_task(base.async_post_message(list_of_urls))
+				asyncio.create_task(DiscordWebhookSender().send_messages(list_of_urls))
+				# asyncio.create_task(base.async_post_message(list_of_urls))
 				
 			if message in ["뱅종"]:
 				print(f"{datetime.now()} offLine {channel_name}")
 				list_of_urls = self.make_offline_list_of_urls(init, chzzkID, json)
-				asyncio.create_task(base.async_post_message(list_of_urls))
+				asyncio.create_task(DiscordWebhookSender().send_messages(list_of_urls))
+				# asyncio.create_task(base.async_post_message(list_of_urls))
 		except Exception as e:
-			asyncio.create_task(base.async_errorPost(f"postLiveMSG {e}"))
+			asyncio.create_task(DiscordWebhookSender()._log_error(f"postLiveMSG {e}"))
 			chzzkLive.livePostList.clear()
 	
 	def getChzzkDataList(self, init: base.initVar):
@@ -303,7 +306,7 @@ class chzzk_live_message():
 				return thumbnail[frontIndex:thumbnail.index(".png") + 4]
 			return None
 		except Exception as e:
-			asyncio.create_task(base.async_errorPost(f"{datetime.now()} wait make thumbnail2 {e}"))
+			asyncio.create_task(DiscordWebhookSender()._log_error(f"{datetime.now()} wait make thumbnail2 {e}"))
 			return None
 
 

@@ -11,13 +11,14 @@ from Afreeca_chat_message import AfreecaChat
 from Chzzk_video import chzzk_video
 from getCafePostTitle import getCafePostTitle
 from getYoutubeJsonData import getYoutubeJsonData
+from discord_webhook_sender import DiscordWebhookSender
 
     
 async def main_loop(init: base.initVar, c_chzzk_live_message: chzzk_live_message, c_afreeca_live_message: afreeca_live_message, c_chzzk_video: chzzk_video, c_cafe: getCafePostTitle):
     chzzkLive = base.chzzkLiveData(livePostList=[])
     afreecaLive = base.afreecaLiveData(livePostList=[])
     chzzkVideo = base.chzzkVideoData(video_alarm_List=[])
-    cafeVar = base.cafeVarData()
+    cafeVar = base.cafeVarData(message_list=[])
     while True:
         try:
             # if init.count % 1000000 == 0: 
@@ -35,7 +36,7 @@ async def main_loop(init: base.initVar, c_chzzk_live_message: chzzk_live_message
             base.fCount(init)
 
         except Exception as e:
-            asyncio.create_task(base.async_errorPost(f"Error in main loop: {str(e)}"))
+            asyncio.create_task(DiscordWebhookSender()._log_error(f"Error in main loop: {str(e)}"))
             init = base.initVar()
             await base.discordBotDataVars(init)
             chzzkLive = base.chzzkLiveData(livePostList=[])
@@ -46,49 +47,41 @@ async def main_loop(init: base.initVar, c_chzzk_live_message: chzzk_live_message
 
 
 async def fyoutube(init: base.initVar, c_youtube: getYoutubeJsonData):
-    count = 0 
+    await asyncio.sleep(2)
     youtubeVideo = base.youtubeVideoData(
         video_count_check_dict={},
         developerKeyDict = environ['developerKeyList'].split(",")
         )
     while True:
-        if count != 0:
-            try:
-                if not init.youtube_TF: await asyncio.sleep(3);continue
-                start_time = time()
-                await asyncio.create_task(c_youtube.fYoutube(init, youtubeVideo))
-                end_time = time()
-                sleepTime = 0
-                if end_time - start_time < 3.00: sleepTime = 3.00 - (end_time - start_time)
-                await asyncio.sleep(sleepTime)
-            except Exception as e: print(f"{datetime.now()} error fyoutube {e}");await asyncio.sleep(3)
-        else: 
-            count = 1
-            await asyncio.sleep(3)
+        try:
+            if not init.youtube_TF: await asyncio.sleep(3);continue
+            start_time = time()
+            await asyncio.create_task(c_youtube.fYoutube(init, youtubeVideo))
+            end_time = time()
+            sleepTime = 0
+            if end_time - start_time < 3.00: sleepTime = 3.00 - (end_time - start_time)
+            await asyncio.sleep(sleepTime)
+        except Exception as e: print(f"{datetime.now()} error fyoutube {e}");await asyncio.sleep(3)
 
-async def chzzk_chatf(init: base.initVar, c_chzzk_chat_message: chzzk_chat_message):
-    count = 0 
+
+async def chzzk_chatf(init: base.initVar):
+    await asyncio.sleep(2)
     while True:
-        if count != 0:
-            try:
-                test = [c_chzzk_chat_message.chatMsg(init, chzzkID) for chzzkID in init.chzzkIDList["channelID"]] 
-                await asyncio.gather(*test)
-            except Exception as e: print(f"{datetime.now()} error chzzk_chatf {e}");await asyncio.sleep(1)
-        else: 
-            count = 1
-        await asyncio.sleep(3)
+        try:
+            test = [chzzk_chat_message(init, chzzkID).start() for chzzkID in init.chzzkIDList["channelID"]] 
+            await asyncio.gather(*test)
+        except Exception as e: print(f"{datetime.now()} error chzzk_chatf {e}");await asyncio.sleep(1)
+
+        
 
 async def afreeca_chatf(init: base.initVar, C_Afreeca_chat_message: AfreecaChat):
-    count = 0 
+    await asyncio.sleep(2)
     while True:
-        if count != 0:
-            try:
-                test = [C_Afreeca_chat_message.connect_to_chat(init, afreecaID) for afreecaID in init.afreecaIDList["channelID"]] 
-                await asyncio.gather(*test)
-            except Exception as e: print(f"{datetime.now()} error afreeca_chatf {e}");await asyncio.sleep(1)
-        else: 
-            count = 1
-        await asyncio.sleep(3)
+        try:
+            test = [C_Afreeca_chat_message.connect_to_chat(init, afreecaID) for afreecaID in init.afreecaIDList["channelID"]] 
+            await asyncio.gather(*test)
+        except Exception as e: print(f"{datetime.now()} error afreeca_chatf {e}");await asyncio.sleep(1)
+        
     
 async def main():
 
@@ -101,7 +94,6 @@ async def main():
     c_chzzk_live_message = chzzk_live_message()
     c_afreeca_live_message = afreeca_live_message()
 
-    c_chzzk_chat_message = chzzk_chat_message()
     C_Afreeca_chat_message = AfreecaChat()
 
     c_chzzk_video = chzzk_video()
@@ -111,7 +103,7 @@ async def main():
     test = [
             asyncio.create_task(main_loop(init, c_chzzk_live_message, c_afreeca_live_message, c_chzzk_video, c_cafe)),
             asyncio.create_task(afreeca_chatf(init, C_Afreeca_chat_message)),
-            asyncio.create_task(chzzk_chatf(init, c_chzzk_chat_message)),
+            asyncio.create_task(chzzk_chatf(init)),
             asyncio.create_task(fyoutube(init, c_youtube)),
             ]
     
