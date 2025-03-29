@@ -8,7 +8,7 @@ from aiohttp import ClientSession, TCPConnector, ClientError
 import pandas as pd
 from requests import post
 from timeit import default_timer
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from supabase import create_client
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
@@ -33,28 +33,28 @@ class initVar:
 	
 @dataclass
 class chzzkLiveData:
-	livePostList: list
+	livePostList: list = field(default_factory=list)
 	change_title_time: str = '2024-01-01 00:00:00'
 	LiveCountStart: str = '2024-01-01 00:00:00'
 	LiveCountEnd: str = '2024-01-01 00:00:00'
 
 @dataclass
 class afreecaLiveData:
-	livePostList: list
+	livePostList: list = field(default_factory=list)
 	change_title_time: str = '2024-01-01 00:00:00'
 	LiveCountStart: str = '2024-01-01 00:00:00'
 	LiveCountEnd: str = '2024-01-01 00:00:00'
 
 @dataclass
 class twitchLiveData:
-	livePostList: list
+	livePostList: list = field(default_factory=list)
 	change_title_time: str = '2024-01-01 00:00:00'
 	LiveCountStart: str = '2024-01-01 00:00:00'
 	LiveCountEnd: str = '2024-01-01 00:00:00'
 
 @dataclass
 class chzzkVideoData:
-	video_alarm_List: list
+	video_alarm_List: list = field(default_factory=list)
 
 @dataclass
 class youtubeVideoData:
@@ -65,7 +65,7 @@ class youtubeVideoData:
 
 @dataclass
 class cafeVarData:
-	message_list: list
+	message_list: list = field(default_factory=list)
 
 @dataclass
 class iconLinkData:

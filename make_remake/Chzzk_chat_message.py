@@ -10,7 +10,7 @@ from json import loads, dumps, JSONDecodeError
 from dataclasses import dataclass, field
 from supabase import create_client
 from cmd_type import CHZZK_CHAT_CMD
-from base import getChzzkHeaders, getChzzkCookie, initVar, if_after_time, if_last_chat
+from base import getChzzkHeaders, getChzzkCookie, if_after_time, if_last_chat
 from discord_webhook_sender import DiscordWebhookSender
 
 @dataclass
@@ -195,7 +195,7 @@ class chzzk_chat_message:
                     message = format_message('chat', nickname, msg, time)
                     
                 if post_msg_TF:
-                    asyncio.create_task(DiscordWebhookSender()._log_error(message))
+                    asyncio.create_task(DiscordWebhookSender()._log_error(message, webhook_url=environ['donation_post_url']))
                 else:
                     print(f"{datetime.now()} {message}")
 

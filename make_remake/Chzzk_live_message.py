@@ -45,8 +45,7 @@ class chzzk_live_message():
 
 		except Exception as e:
 			asyncio.create_task(DiscordWebhookSender()._log_error(f"testerror get stateData chzzk live{e}.{chzzkID}.{str(offState)}"))
-			if str(offState).find("error") != -1:
-				len(1)
+			init.chat_json[self.data.chzzkID] = True
 
 	def _should_process_online_status(self, init: base.initVar, chzzkLive: base.chzzkLiveData, live, title, chzzkID, offState):
 		return ((self.checkStateTransition(init, live, chzzkID, offState, "OPEN") or 
