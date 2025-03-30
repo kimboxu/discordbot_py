@@ -11,7 +11,7 @@ from datetime import datetime
 from dataclasses import dataclass, field
 from supabase import create_client
 from Afreeca_live_message import afreeca_getChannelStateData, afreeca_getLink
-from discord_webhook_sender import DiscordWebhookSender, make_chat_list_of_urls
+from discord_webhook_sender import DiscordWebhookSender, get_chat_list_of_urls
 
 @dataclass
 class afreecaChatData:
@@ -145,7 +145,7 @@ class AfreecaChat:
         except Exception as e:
             await DiscordWebhookSender()._log_error(f"Error in ping function: {e}")
         
-        print(f"{self.data.chzzkID} chat pong 종료")
+        print(f"{self.data.afreecaID} chat pong 종료")
     
     async def _receive_messages(self, message_queue: asyncio.Queue):
         while True:
@@ -178,7 +178,7 @@ class AfreecaChat:
             messages = [part.decode('utf-8', errors='ignore') for part in parts]
             
             if self._is_invalid_message(messages):
-                if self.fafreeca_chat_TF(messages): 
+                if self.if_afreeca_chat(messages): 
                     asyncio.create_task(DiscordWebhookSender()._log_error(f"아프리카 chat recv messages {messages}", webhook_url=environ['chat_post_url']))
                 continue
             
@@ -204,7 +204,7 @@ class AfreecaChat:
                 name, chat, thumbnail_url = self.data.afreeca_chat_msg_List.pop(0)
                 channel_name = self.afreecaIDList.loc[self.data.afreecaID, 'channelName']
                 
-                list_of_urls = make_chat_list_of_urls(self.init, name, chat, thumbnail_url, channel_name)
+                list_of_urls = get_chat_list_of_urls(self.init, name, chat, thumbnail_url, channel_name)
                 asyncio.create_task(DiscordWebhookSender().send_messages(list_of_urls))
             
                 print(f"{datetime.now()} post chat")
@@ -218,8 +218,8 @@ class AfreecaChat:
     def calculate_byte_size(string):
         return len(string.encode('utf-8')) + 6
 
-    def _change_afreeca_chat_json(self, afreeca_chat_TF = True):
-        self.chat_json[self.data.afreecaID] = afreeca_chat_TF
+    def _change_afreeca_chat_json(self, afreeca_chat_rejoin = True):
+        self.chat_json[self.data.afreecaID] = afreeca_chat_rejoin
         supabase = create_client(environ['supabase_url'], environ['supabase_key'])
         supabase.table('date_update').upsert({"idx": 0, "chat_json": self.chat_json}).execute()
 
@@ -261,7 +261,7 @@ class AfreecaChat:
                 messages[2] in ["1"] or 
                 ("fw" in messages[2]))
 
-    def fafreeca_chat_TF(self, messages):
+    def if_afreeca_chat(self, messages):
         # 기본 제외 조건들을 리스트로 정의
         excluded_values = {'-1', '1', '', '0', '2', '4'}
         

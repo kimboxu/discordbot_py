@@ -134,7 +134,7 @@ class DiscordWebhookSender:
         except Exception as e:
             print(f"Failed to log error to webhook: {e}")
 
-def make_chat_list_of_urls(init, name, chat, thumbnail_url, channel_name):
+def get_chat_list_of_urls(init, name, chat, thumbnail_url, channel_name):
     result_urls = []
     try:
         def make_thumbnail_url():
@@ -157,5 +157,27 @@ def make_chat_list_of_urls(init, name, chat, thumbnail_url, channel_name):
             
         return result_urls
     except Exception as e:
-        asyncio.create_task(DiscordWebhookSender()._log_error(f"Error in make_chat_list_of_urls: {type(e).__name__}: {str(e)}"))
+        asyncio.create_task(DiscordWebhookSender()._log_error(f"Error in get_chat_list_of_urls: {type(e).__name__}: {str(e)}"))
+        return result_urls
+    
+def get_cafe_list_of_urls(init, json_data, writerNickname):
+    result_urls = []
+    try:
+        if init.DO_TEST:
+            # return [(environ['errorPostBotURL'], json_data)]
+            return result_urls
+        
+
+        for discordWebhookURL in init.userStateData['discordURL']:
+                try:
+                    if ((init.userStateData.loc[discordWebhookURL, "cafe_user_json"] and
+                    writerNickname in init.userStateData.loc[discordWebhookURL, "cafe_user_json"].get(init.channelID, []))):
+                        result_urls.append((discordWebhookURL, json_data))
+                except (KeyError, AttributeError):
+                    # 특정 URL 처리 중 오류가 발생해도 다른 URL 처리는 계속 진행
+                    continue
+                
+        return result_urls
+    except Exception as e:
+        asyncio.create_task(DiscordWebhookSender()._log_error(f"Error in get_cafe_list_of_urls: {type(e).__name__}: {str(e)}"))
         return result_urls

@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from supabase import create_client
 from cmd_type import CHZZK_CHAT_CMD
 from base import getChzzkHeaders, getChzzkCookie, if_after_time, if_last_chat
-from discord_webhook_sender import DiscordWebhookSender, make_chat_list_of_urls
+from discord_webhook_sender import DiscordWebhookSender, get_chat_list_of_urls
 
 @dataclass
 class ChzzkChatData:
@@ -270,7 +270,7 @@ class chzzk_chat_message:
                 thumbnail_url = await self._get_thumbnail_url(name, chat, uid)
                 channel_name = self.chzzkIDList.loc[self.data.chzzkID, 'channelName']
 
-                list_of_urls = make_chat_list_of_urls(self.init, name, chat, thumbnail_url, channel_name)
+                list_of_urls = get_chat_list_of_urls(self.init, name, chat, thumbnail_url, channel_name)
                 asyncio.create_task(DiscordWebhookSender().send_messages(list_of_urls))
 
                 print(f"{datetime.now()} post chat")
@@ -301,7 +301,7 @@ class chzzk_chat_message:
         
         print(f"{self.data.chzzkID} chat pong 종료")
 
-    async def connect(self, TF = 0):
+    async def connect(self, first_connectTF = 0):
         
         self.data.chzzk_chat_count = 80000
         self.data.accessToken, self.data.extraToken = chzzk_api.fetch_accessToken(self.data.cid, getChzzkCookie())
@@ -379,35 +379,6 @@ class chzzk_chat_message:
         
         return dict(send_dict, **default_dict)
     
-    # async def make_chat_list_of_urls(self):
-    #     result_urls = []
-    #     try:
-    #         name, chat, chat_type, uid = self.data.chzzk_chat_msg_List.pop(0)
-
-    #         thumbnail_url = await self._get_thumbnail_url(name, chat, uid)
-
-    #         post_message = {'content'   : chat,
-    #                         "username"  : name + " >> " + self.chzzkIDList.loc[self.data.chzzkID, 'channelName'],
-    #                         "avatar_url": thumbnail_url}
-            
-    #         if self.DO_TEST:
-    #             # return [(environ['errorPostBotURL'], message)]
-    #             return result_urls
-            
-    #         for discordWebhookURL in self.userStateData['discordURL']:
-    #             try:
-    #                 if (self.userStateData.loc[discordWebhookURL, "chat_user_json"] and 
-    #                     name in self.userStateData.loc[discordWebhookURL, "chat_user_json"].get(self.data.chzzkID, [])):
-    #                     result_urls.append((discordWebhookURL, post_message))
-    #             except (KeyError, AttributeError):
-    #                 # 특정 URL 처리 중 오류가 발생해도 다른 URL 처리는 계속 진행
-    #                 continue
-                
-    #         return result_urls
-    #     except Exception as e:
-    #         asyncio.create_task(DiscordWebhookSender()._log_error(f"Error in make_chat_list_of_urls: {type(e).__name__}: {str(e)}"))
-    #         return result_urls
-
     async def _get_thumbnail_url(self, name, chat, uid):
         def chzzk_getLink(uid):
             return f'https://api.chzzk.naver.com/service/v1/channels/{uid}'
@@ -453,8 +424,8 @@ class chzzk_chat_message:
 
         return thumbnail_url
 
-    def _change_chzzk_chat_json(self, chzzkID_chat_TF = True):
-        self.chat_json[self.chzzk_id] = chzzkID_chat_TF
+    def _change_chzzk_chat_json(self, chzzkID_chat_rejoin = True):
+        self.chat_json[self.chzzk_id] = chzzkID_chat_rejoin
         supabase = create_client(environ['supabase_url'], environ['supabase_key'])
         supabase.table('date_update').upsert({"idx": 0, "chat_json": self.chat_json}).execute()
     

@@ -25,11 +25,14 @@ async def main_loop(init: base.initVar):
     while True:
         try:
             if init.count % 2 == 0: await base.userDataVar(init, supabase)
+
+            cafe_tasks = [asyncio.create_task(c_cafe.start(channel_id)) for channel_id in init.cafeData["channelID"]]
+            
             tasks = [
                 asyncio.create_task(c_chzzk_live_message.chzzk_liveMsg()),
                 asyncio.create_task(c_afreeca_live_message.afreeca_liveMsg()),
-                asyncio.create_task(c_cafe.fCafeTitle()),
                 asyncio.create_task(c_chzzk_video.chzzk_video_msg()),
+                *cafe_tasks
             ]
 
             await asyncio.gather(*tasks)
@@ -85,9 +88,9 @@ async def main():
     
     test = [
             asyncio.create_task(main_loop(init)),
-            asyncio.create_task(afreeca_chatf(init)),
-            asyncio.create_task(chzzk_chatf(init)),
-            asyncio.create_task(fyoutube(init)),
+            # asyncio.create_task(afreeca_chatf(init)),
+            # asyncio.create_task(chzzk_chatf(init)),
+            # asyncio.create_task(fyoutube(init)),
             ]
     
     await asyncio.gather(*test)
