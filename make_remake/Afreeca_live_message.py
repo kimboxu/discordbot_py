@@ -9,6 +9,7 @@ from discord_webhook_sender import DiscordWebhookSender
 
 class afreeca_live_message():
 	def __init__(self, init_var: base.initVar):
+		self.init = init_var
 		self.DO_TEST = init_var.DO_TEST
 		self.userStateData = init_var.userStateData
 		self.afreecaIDList = init_var.afreecaIDList
@@ -82,8 +83,8 @@ class afreeca_live_message():
 		old_title = self.afreeca_titleData.loc[user_id,'title2']
 		self.data.livePostList.append((user_id, message, title, old_title, json))
 		
-		await base.save_airing_data('afreeca', user_id)
-		await base.save_profile_data('afreeca', user_id)
+		await base.save_airing_data(self.init, 'afreeca', user_id)
+		await base.save_profile_data(self.init, 'afreeca', user_id)
 		
 		self.data.LiveCountStart = datetime.now().isoformat()
 		self.data.change_title_time = datetime.now().isoformat()
@@ -96,7 +97,7 @@ class afreeca_live_message():
 		self.offLineTitle(user_id)
 		self.data.livePostList.append((user_id, message, title, None, json))
 		
-		await base.save_airing_data('afreeca', user_id)
+		await base.save_airing_data(self.init, 'afreeca', user_id)
 		self.data.LiveCountEnd = datetime.now().isoformat()
 		self.data.change_title_time = datetime.now().isoformat()
 	

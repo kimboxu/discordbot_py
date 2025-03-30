@@ -9,6 +9,7 @@ from discord_webhook_sender import DiscordWebhookSender
 
 class chzzk_live_message():
 	def __init__(self, init_var):
+		self.init = init_var
 		self.DO_TEST = init_var.DO_TEST
 		self.userStateData = init_var.userStateData
 		self.chzzkIDList = init_var.chzzkIDList
@@ -73,8 +74,8 @@ class chzzk_live_message():
 		old_title = self.chzzk_titleData.loc[chzzkID,'title2']
 		self.data.livePostList.append((chzzkID, message, title, old_title, json))
 
-		await base.save_airing_data('chzzk', chzzkID)
-		await base.save_profile_data('chzzk', chzzkID)
+		await base.save_airing_data(self.init, 'chzzk', chzzkID)
+		await base.save_profile_data(self.init, 'chzzk', chzzkID)
 
 		if message == "뱅온!": 
 			self.data.LiveCountStart = datetime.now().isoformat()
@@ -88,7 +89,7 @@ class chzzk_live_message():
 		self.offLineTime(chzzkID, offState)
 		self.data.livePostList.append((chzzkID, message, title, None, json))
 
-		await base.save_airing_data('chzzk', chzzkID)
+		await base.save_airing_data(self.init, 'chzzk', chzzkID)
 		self.data.LiveCountEnd = datetime.now().isoformat()
 		self.data.change_title_time = datetime.now().isoformat()
 	

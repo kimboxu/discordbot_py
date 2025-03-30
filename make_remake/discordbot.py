@@ -88,8 +88,8 @@ async def main():
     
     test = [
             asyncio.create_task(main_loop(init)),
-            # asyncio.create_task(afreeca_chatf(init)),
-            # asyncio.create_task(chzzk_chatf(init)),
+            asyncio.create_task(afreeca_chatf(init)),
+            asyncio.create_task(chzzk_chatf(init)),
             # asyncio.create_task(fyoutube(init)),
             ]
     
