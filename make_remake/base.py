@@ -574,33 +574,3 @@ async def save_profile_data(init: initVar, platform, id):
 		except Exception as e:
 			asyncio.create_task(DiscordWebhookSender()._log_error(f"error saving profile data {e}"))
 			await asyncio.sleep(0.5)
-
-async def chzzk_saveVideoData(init: initVar, chzzkID, videoNo, videoTitle, publishDate): #save profile data
-	idx = {chzzk: i for i, chzzk in enumerate(init.chzzk_video["channelID"])}
-
-	for _ in range(3):
-		try:
-			chzzk_video_json = init.chzzk_video.loc[chzzkID, 'VOD_json']
-
-			chzzk_video_json["videoTitle3"] = chzzk_video_json["videoTitle2"]
-			chzzk_video_json["videoTitle2"] = chzzk_video_json["videoTitle1"]
-			chzzk_video_json["videoTitle1"] = videoTitle
-
-			chzzk_video_json["videoNo3"] 	= chzzk_video_json["videoNo2"]
-			chzzk_video_json["videoNo2"] 	= chzzk_video_json["videoNo1"]
-			chzzk_video_json["videoNo1"] 	= videoNo
-
-			chzzk_video_json["publishDate"] = publishDate
-
-			supabase = create_client(environ['supabase_url'], environ['supabase_key'])
-			supabase.table('chzzk_video').upsert({
-				"idx": idx[chzzkID],
-				'VOD_json': init.chzzk_video.loc[chzzkID, 'VOD_json']
-			}).execute()
-			break
-		except Exception as e:
-			asyncio.create_task(DiscordWebhookSender()._log_error(f"error saving profile data {e}"))
-			await asyncio.sleep(0.5)
-
-
-	
