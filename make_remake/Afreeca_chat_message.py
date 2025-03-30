@@ -31,6 +31,7 @@ class afreecaChatData:
 class AfreecaChat:
     def __init__(self, init_var: base.initVar, afreeca_id):
         self.DO_TEST = init_var.DO_TEST
+        self.userStateData = init_var.userStateData
         self.afreecaIDList = init_var.afreecaIDList
         self.afreeca_chatFilter = init_var.afreeca_chatFilter
         self.afreeca_titleData = init_var.afreeca_titleData
@@ -204,7 +205,7 @@ class AfreecaChat:
                 name, chat, thumbnail_url = self.data.afreeca_chat_msg_List.pop(0)
                 channel_name = self.afreecaIDList.loc[self.data.afreecaID, 'channelName']
                 
-                list_of_urls = get_chat_list_of_urls(self.init, name, chat, thumbnail_url, channel_name)
+                list_of_urls = get_chat_list_of_urls(self.DO_TEST, self.userStateData, name, chat, thumbnail_url, channel_name)
                 asyncio.create_task(DiscordWebhookSender().send_messages(list_of_urls))
             
                 print(f"{datetime.now()} post chat")

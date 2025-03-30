@@ -121,7 +121,7 @@ class DiscordWebhookSender:
         except Exception as e:
             await self._log_error(f"Error deleting user state data: {e}")
 
-    async def _log_error(init, message: str, webhook_url = os.environ.get('errorPostBotURL')):
+    async def _log_error(message: str, webhook_url = os.environ.get('errorPostBotURL')):
 
         try:
             async with ClientSession() as session:
@@ -134,7 +134,7 @@ class DiscordWebhookSender:
         except Exception as e:
             print(f"Failed to log error to webhook: {e}")
 
-def get_chat_list_of_urls(init, name, chat, thumbnail_url, channel_name):
+def get_chat_list_of_urls(DO_TEST, userStateData, name, chat, thumbnail_url, channel_name):
     result_urls = []
     try:
         def make_thumbnail_url():
@@ -142,14 +142,14 @@ def get_chat_list_of_urls(init, name, chat, thumbnail_url, channel_name):
                     "username"  : name + " >> " + channel_name,
                     "avatar_url": thumbnail_url}
 
-        if init.DO_TEST:
+        if DO_TEST:
             # return [(environ['errorPostBotURL'], message)]
             return result_urls
         
-        for discordWebhookURL in init.userStateData['discordURL']:
+        for discordWebhookURL in userStateData['discordURL']:
             try:
-                if (init.userStateData.loc[discordWebhookURL, "chat_user_json"] and 
-                    name in init.userStateData.loc[discordWebhookURL, "chat_user_json"].get(channel_name, [])):
+                if (userStateData.loc[discordWebhookURL, "chat_user_json"] and 
+                    name in userStateData.loc[discordWebhookURL, "chat_user_json"].get(channel_name, [])):
                     result_urls.append((discordWebhookURL, make_thumbnail_url()))
             except (KeyError, AttributeError):
                 # 특정 URL 처리 중 오류가 발생해도 다른 URL 처리는 계속 진행
@@ -160,18 +160,18 @@ def get_chat_list_of_urls(init, name, chat, thumbnail_url, channel_name):
         asyncio.create_task(DiscordWebhookSender()._log_error(f"Error in get_chat_list_of_urls: {type(e).__name__}: {str(e)}"))
         return result_urls
     
-def get_cafe_list_of_urls(init, json_data, writerNickname):
+def get_cafe_list_of_urls(DO_TEST, userStateData, channelID, json_data, writerNickname):
     result_urls = []
     try:
-        if init.DO_TEST:
+        if DO_TEST:
             # return [(environ['errorPostBotURL'], json_data)]
             return result_urls
         
 
-        for discordWebhookURL in init.userStateData['discordURL']:
+        for discordWebhookURL in userStateData['discordURL']:
                 try:
-                    if ((init.userStateData.loc[discordWebhookURL, "cafe_user_json"] and
-                    writerNickname in init.userStateData.loc[discordWebhookURL, "cafe_user_json"].get(init.channelID, []))):
+                    if ((userStateData.loc[discordWebhookURL, "cafe_user_json"] and
+                    writerNickname in userStateData.loc[discordWebhookURL, "cafe_user_json"].get(channelID, []))):
                         result_urls.append((discordWebhookURL, json_data))
                 except (KeyError, AttributeError):
                     # 특정 URL 처리 중 오류가 발생해도 다른 URL 처리는 계속 진행

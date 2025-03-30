@@ -360,21 +360,21 @@ def getTwitchHeaders():
 def getChzzkHeaders(): return {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'} #get headers 
 def getChzzkCookie(): return {'NID_AUT': environ['NID_AUT'],'NID_SES':environ['NID_SES']} 
 
-async def should_terminate(sock, ID):
-	try:
-		await asyncio.sleep(300)  # 5분 대기
+# async def should_terminate(sock, ID):
+# 	try:
+# 		await asyncio.sleep(300)  # 5분 대기
 		
-		if not sock.closed:
-			await sock.close()
-		print(f"{datetime.now()} {ID}: 방송 종료 5분 경과, 연결 종료")
+# 		if not sock.closed:
+# 			await sock.close()
+# 		print(f"{datetime.now()} {ID}: 방송 종료 5분 경과, 연결 종료")
 		
-	except asyncio.CancelledError:
-		# 태스크가 취소된 경우 정상적으로 종료
-		raise
-	except Exception as e:
-		print(f"{datetime.now()} error should_terminate {e}")
+# 	except asyncio.CancelledError:
+# 		# 태스크가 취소된 경우 정상적으로 종료
+# 		raise
+# 	except Exception as e:
+# 		print(f"{datetime.now()} error should_terminate {e}")
 	
-	return "CLOSE"
+# 	return "CLOSE"
 
 def if_after_time(time_str, sec = 300): # 지금 시간이 이전 시간보다 SEC초 만큼 지났는지 확인
 	time = datetime(int(time_str[:4]),int(time_str[5:7]),int(time_str[8:10]),int(time_str[11:13]),int(time_str[14:16]),int(time_str[17:19])) + timedelta(seconds=sec)
@@ -383,9 +383,9 @@ def if_after_time(time_str, sec = 300): # 지금 시간이 이전 시간보다 S
 def if_last_chat(last_chat_time: datetime, sec = 300): #마지막 채팅을 읽어온지 sec초가 지났다면 True
     return (last_chat_time + timedelta(seconds=sec)) <= datetime.now()
 
-async def timer(time): 
-	await asyncio.sleep(time)  # time 초 대기
-	return "CLOSE"
+# async def timer(time): 
+# 	await asyncio.sleep(time)  # time 초 대기
+# 	return "CLOSE"
 
 async def get_message(arr, platform):
 	platform_handlers = {

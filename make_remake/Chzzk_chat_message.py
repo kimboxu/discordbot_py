@@ -32,6 +32,7 @@ class ChzzkChatData:
 class chzzk_chat_message:
     def __init__(self, init_var, chzzk_id):
         self.DO_TEST = init_var.DO_TEST
+        self.userStateData = init_var.userStateData
         self.chzzkIDList = init_var.chzzkIDList
         self.chzzk_chatFilter = init_var.chzzk_chatFilter
         self.chzzk_titleData = init_var.chzzk_titleData
@@ -270,7 +271,7 @@ class chzzk_chat_message:
                 thumbnail_url = await self._get_thumbnail_url(name, chat, uid)
                 channel_name = self.chzzkIDList.loc[self.data.chzzkID, 'channelName']
 
-                list_of_urls = get_chat_list_of_urls(self.init, name, chat, thumbnail_url, channel_name)
+                list_of_urls = get_chat_list_of_urls(self.DO_TEST, self.userStateData, name, chat, thumbnail_url, channel_name)
                 asyncio.create_task(DiscordWebhookSender().send_messages(list_of_urls))
 
                 print(f"{datetime.now()} post chat")

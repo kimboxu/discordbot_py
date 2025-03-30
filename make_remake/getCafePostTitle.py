@@ -197,7 +197,7 @@ class getCafePostTitle:
             for post_data in self.message_list:
                 json_data = self.create_cafe_json(post_data)
                 print(f"{datetime.now()} {post_data.writer_nickname} post cafe")
-                task = DiscordWebhookSender().send_messages(get_cafe_list_of_urls(self.init, json_data, post_data.writerNickname))
+                task = DiscordWebhookSender().send_messages(get_cafe_list_of_urls(self.DO_TEST, self.userStateData, self.channelID, json_data, post_data.writerNickname))
                 tasks.append(task)
             
             if tasks:
