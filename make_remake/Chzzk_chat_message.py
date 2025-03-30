@@ -11,11 +11,11 @@ from dataclasses import dataclass, field
 from supabase import create_client
 from cmd_type import CHZZK_CHAT_CMD
 from base import getChzzkHeaders, getChzzkCookie, if_after_time, if_last_chat
-from discord_webhook_sender import DiscordWebhookSender
+from discord_webhook_sender import DiscordWebhookSender, make_chat_list_of_urls
 
 @dataclass
 class ChzzkChatData:
-    
+    sock: websockets.connect = None
     chzzk_chat_msg_List: list = field(default_factory=list)
     last_chat_time: datetime = field(default_factory=datetime.now)
     chzzk_chat_count: int = 80000
@@ -31,19 +31,23 @@ class ChzzkChatData:
 
 class chzzk_chat_message:
     def __init__(self, init_var, chzzk_id):
-        self.init = init_var
+        self.DO_TEST = init_var.DO_TEST
+        self.chzzkIDList = init_var.chzzkIDList
+        self.chzzk_chatFilter = init_var.chzzk_chatFilter
+        self.chzzk_titleData = init_var.chzzk_titleData
+        self.chat_json = init_var.chat_json
+
         self.chzzk_id = chzzk_id
-        self.sock: websockets.connect = None
         self.data = ChzzkChatData(chzzkID=chzzk_id)
         self.chat_event = asyncio.Event()
         self.tasks = []
 
     async def start(self):
         while True:
-            if self.init.chat_json[self.chzzk_id]: 
+            if self.chat_json[self.chzzk_id]: 
                 self._change_chzzk_chat_json(False)
             
-            if self.init.chzzk_titleData.loc[self.chzzk_id, 'live_state'] == "CLOSE":
+            if self.chzzk_titleData.loc[self.chzzk_id, 'live_state'] == "CLOSE":
                 await asyncio.sleep(5)
                 continue
             
@@ -59,13 +63,12 @@ class chzzk_chat_message:
         async with websockets.connect('wss://kr-ss3.chat.naver.com/chat', 
                                     subprotocols=['chat'], 
                                     ping_interval=None) as sock:
-            self.sock = sock
-            self.data.cid = self.init.chzzk_titleData.loc[self.chzzk_id, 'chatChannelId']
+            self.data.sock = sock
+            self.data.cid = self.chzzk_titleData.loc[self.chzzk_id, 'chatChannelId']
             
-            await self.connect()
+            await self.connect(self.if_chzzk_Join())
             message_queue = asyncio.Queue()
 
-            # 태스크 생성 및 관리
             self.tasks = [
                 asyncio.create_task(self._ping()),
                 asyncio.create_task(self._message_receiver(message_queue)),
@@ -73,7 +76,6 @@ class chzzk_chat_message:
                 asyncio.create_task(self._post_chat())
             ]
             
-            # 주요 작업 대기
             await asyncio.gather(self.tasks[0], self.tasks[1])
 
     async def _cleanup_tasks(self):
@@ -92,14 +94,15 @@ class chzzk_chat_message:
 
             # 논블로킹 방식으로 메시지 수신 시도
             try:
-                if if_last_chat(self.data.last_chat_time) or self.if_chzzk_Join():
-                    try: await self.sock.close()
+                if self.if_chzzk_Join():
+                    try: await self.data.sock.close()
                     except: pass
 
-                if self.sock.closed:
+                if self.data.sock.closed:
+                    asyncio.create_task(DiscordWebhookSender()._log_error(f"{self.data.chzzkID} 연결 종료 {self.data.cid}", webhook_url=environ['chat_post_url']))
                     break
 
-                raw_message = await asyncio.wait_for(self.sock.recv(), timeout=1)
+                raw_message = await asyncio.wait_for(self.data.sock.recv(), timeout=1)
                 self.data.last_chat_time = datetime.now()
                 await message_queue.put(loads(raw_message))
                 
@@ -107,9 +110,9 @@ class chzzk_chat_message:
                 continue
                 
             except (JSONDecodeError, ConnectionError, RuntimeError, websockets.exceptions.ConnectionClosed) as e:
-                if self.init.chzzk_titleData.loc[self.data.chzzkID, 'live_state'] == "OPEN":
+                if self.chzzk_titleData.loc[self.data.chzzkID, 'live_state'] == "OPEN":
                     asyncio.create_task(DiscordWebhookSender()._log_error(f"{datetime.now()} last_chat_time{self.data.chzzkID} 2.{self.data.last_chat_time}.{e}"))
-                    try: await self.sock.close()
+                    try: await self.data.sock.close()
                     except: pass
                 asyncio.create_task(DiscordWebhookSender()._log_error(f"Test2 {self.data.chzzkID}.{e}{datetime.now()}"))
                 continue
@@ -125,13 +128,13 @@ class chzzk_chat_message:
                 try:
                     if nickname is None:
                         continue
-                    if not self.init.DO_TEST and (chat_type == "후원" or nickname in [*self.init.chzzk_chatFilter["channelName"]]):
+                    if not self.DO_TEST and (chat_type == "후원" or nickname in [*self.chzzk_chatFilter["channelName"]]):
                         asyncio.create_task(print_msg(chat_data, nickname))
 
-                    if not(nickname in [*self.init.chzzk_chatFilter["channelName"]]):
+                    if not(nickname in [*self.chzzk_chatFilter["channelName"]]):
                         asyncio.create_task(print_msg(chat_data, nickname, post_msg_TF=False))
 
-                    if nickname not in [*self.init.chzzk_chatFilter["channelName"]]: #chzzk_chatFilter에 없는 사람 채팅은 제거
+                    if nickname not in [*self.chzzk_chatFilter["channelName"]]: #chzzk_chatFilter에 없는 사람 채팅은 제거
                         return
 
                     if 'msg' in chat_data:
@@ -172,7 +175,7 @@ class chzzk_chat_message:
             return '(알 수 없음)'
         
         async def print_msg(chat_data, nickname, post_msg_TF=True):
-            chzzkName = self.init.chzzkIDList.loc[self.data.chzzkID, 'channelName']
+            chzzkName = self.chzzkIDList.loc[self.data.chzzkID, 'channelName']
             def format_message(msg_type, nickname, message, time, **kwargs):
                 base = f"[{chat_type} - {chzzkName}] {nickname}"
                 if msg_type == 'donation':
@@ -212,7 +215,7 @@ class chzzk_chat_message:
                     chat_cmd = raw_message['cmd']
 
                     if chat_cmd == CHZZK_CHAT_CMD['ping']: 
-                        await self.sock.send(dumps(self._CHZZK_CHAT_DICT("pong")))
+                        await self.data.sock.send(dumps(self._CHZZK_CHAT_DICT("pong")))
                         continue
 
                     # 채팅 타입 결정
@@ -259,17 +262,21 @@ class chzzk_chat_message:
                 await asyncio.sleep(0.5)  # 예외 발생 시 잠시 대기
          
     async def _post_chat(self):
-        while True:
-            await self.data.chat_event.wait()
-            
+        while not self.data.sock.closed and self.data.chzzk_chat_msg_List:
             try:
-                list_of_urls = await self.make_chat_list_of_urls()
+                await self.data.chat_event.wait()
+
+                name, chat, chat_type, uid = self.data.chzzk_chat_msg_List.pop(0)
+                thumbnail_url = await self._get_thumbnail_url(name, chat, uid)
+                channel_name = self.chzzkIDList.loc[self.data.chzzkID, 'channelName']
+
+                list_of_urls = make_chat_list_of_urls(self.init, name, chat, thumbnail_url, channel_name)
                 asyncio.create_task(DiscordWebhookSender().send_messages(list_of_urls))
-                
+
+                print(f"{datetime.now()} post chat")
                 self.data.chat_event.clear()
                 
             except Exception as e:
-                
                 asyncio.create_task(DiscordWebhookSender()._log_error(f"error postChat: {str(e)}"))
                 self.data.chat_event.clear()
 
@@ -277,12 +284,12 @@ class chzzk_chat_message:
         ping_interval = 10
         
         try:
-            while not self.sock.closed:
+            while not self.data.sock.closed:
                 # Send ping message
-                await self.sock.send(dumps(self._CHZZK_CHAT_DICT("pong")))
+                await self.data.sock.send(dumps(self._CHZZK_CHAT_DICT("pong")))
                 
                 try:
-                    await asyncio.wait_for(asyncio.shield(self.sock.wait_closed()), timeout=ping_interval)
+                    await asyncio.wait_for(asyncio.shield(self.data.sock.wait_closed()), timeout=ping_interval)
                 except asyncio.TimeoutError:
                     continue
                 except Exception as e:
@@ -294,17 +301,17 @@ class chzzk_chat_message:
         
         print(f"{self.data.chzzkID} chat pong 종료")
 
-    async def connect(self):
+    async def connect(self, TF = 0):
         
         self.data.chzzk_chat_count = 80000
         self.data.accessToken, self.data.extraToken = chzzk_api.fetch_accessToken(self.data.cid, getChzzkCookie())
         
-        await self.sock.send(dumps(self._CHZZK_CHAT_DICT("connect")))
-        sock_response = loads(await self.sock.recv())
+        await self.data.sock.send(dumps(self._CHZZK_CHAT_DICT("connect")))
+        sock_response = loads(await self.data.sock.recv())
         self.data.sid = sock_response['bdy']['sid']
 
-        await self.sock.send(dumps(self._CHZZK_CHAT_DICT("recentMessageCount", num = 50)))
-        sock_response = loads(await self.sock.recv())
+        await self.data.sock.send(dumps(self._CHZZK_CHAT_DICT("recentMessageCount", num = 50)))
+        sock_response = loads(await self.data.sock.recv())
 
         asyncio.create_task(DiscordWebhookSender()._log_error(f"{self.data.chzzkID} 연결 완료 {self.data.cid}", webhook_url=environ['chat_post_url']))
 
@@ -336,7 +343,7 @@ class chzzk_chat_message:
             }
         }
 
-        self.sock.send(dumps(dict(send_dict, **default_dict)))
+        self.data.sock.send(dumps(dict(send_dict, **default_dict)))
 
     def _CHZZK_CHAT_DICT(self, option = "connect", num = 50):
         default_dict = {
@@ -372,37 +379,34 @@ class chzzk_chat_message:
         
         return dict(send_dict, **default_dict)
     
-    async def make_chat_list_of_urls(self):
-        result_urls = []
-        try:
-            name, chat, chat_type, uid = self.data.chzzk_chat_msg_List.pop(0)
+    # async def make_chat_list_of_urls(self):
+    #     result_urls = []
+    #     try:
+    #         name, chat, chat_type, uid = self.data.chzzk_chat_msg_List.pop(0)
 
-            chzzkName = self.init.chzzkIDList.loc[self.data.chzzkID, 'channelName']
-            print(f"{datetime.now()} post message [{chat_type} - {chzzkName}]{name}: {chat}")
+    #         thumbnail_url = await self._get_thumbnail_url(name, chat, uid)
 
-            thumbnail_url = await self._get_thumbnail_url(name, chat, uid)
-
-            post_message = {'content'   : chat,
-                            "username"  : name + " >> " + self.init.chzzkIDList.loc[self.data.chzzkID, 'channelName'],
-                            "avatar_url": thumbnail_url}
+    #         post_message = {'content'   : chat,
+    #                         "username"  : name + " >> " + self.chzzkIDList.loc[self.data.chzzkID, 'channelName'],
+    #                         "avatar_url": thumbnail_url}
             
-            if self.init.DO_TEST:
-                # return [(environ['errorPostBotURL'], message)]
-                return result_urls
+    #         if self.DO_TEST:
+    #             # return [(environ['errorPostBotURL'], message)]
+    #             return result_urls
             
-            for discordWebhookURL in self.init.userStateData['discordURL']:
-                try:
-                    if (self.init.userStateData.loc[discordWebhookURL, "chat_user_json"] and 
-                        name in self.init.userStateData.loc[discordWebhookURL, "chat_user_json"].get(self.data.chzzkID, [])):
-                        result_urls.append((discordWebhookURL, post_message))
-                except (KeyError, AttributeError):
-                    # 특정 URL 처리 중 오류가 발생해도 다른 URL 처리는 계속 진행
-                    continue
+    #         for discordWebhookURL in self.userStateData['discordURL']:
+    #             try:
+    #                 if (self.userStateData.loc[discordWebhookURL, "chat_user_json"] and 
+    #                     name in self.userStateData.loc[discordWebhookURL, "chat_user_json"].get(self.data.chzzkID, [])):
+    #                     result_urls.append((discordWebhookURL, post_message))
+    #             except (KeyError, AttributeError):
+    #                 # 특정 URL 처리 중 오류가 발생해도 다른 URL 처리는 계속 진행
+    #                 continue
                 
-            return result_urls
-        except Exception as e:
-            asyncio.create_task(DiscordWebhookSender()._log_error(f"Error in make_chat_list_of_urls: {type(e).__name__}: {str(e)}"))
-            return result_urls
+    #         return result_urls
+    #     except Exception as e:
+    #         asyncio.create_task(DiscordWebhookSender()._log_error(f"Error in make_chat_list_of_urls: {type(e).__name__}: {str(e)}"))
+    #         return result_urls
 
     async def _get_thumbnail_url(self, name, chat, uid):
         def chzzk_getLink(uid):
@@ -450,36 +454,36 @@ class chzzk_chat_message:
         return thumbnail_url
 
     def _change_chzzk_chat_json(self, chzzkID_chat_TF = True):
-        self.init.chat_json[self.chzzk_id] = chzzkID_chat_TF
+        self.chat_json[self.chzzk_id] = chzzkID_chat_TF
         supabase = create_client(environ['supabase_url'], environ['supabase_key'])
-        supabase.table('date_update').upsert({"idx": 0, "chat_json": self.init.chat_json}).execute()
+        supabase.table('date_update').upsert({"idx": 0, "chat_json": self.chat_json}).execute()
     
     def if_chzzk_Join(self) -> int:
         try:
             
-            #방송을 방금 켰는지
-            if not if_after_time(self.init.chzzk_titleData.loc[self.data.chzzkID,'update_time']):
+            #방송을 방금 켰는지 or 마지막으로 읽어온 채팅이 일정 시간이 넘었을 경우
+            if not if_after_time(self.chzzk_titleData.loc[self.data.chzzkID,'update_time']) or if_last_chat(self.data.last_chat_time):
             
-                #방금 켰다면 채팅창 코드가 달라지기 때문에 해당 정보 확인 후 연결
-                self.data.cid = chzzk_api.fetch_chatChannelId(self.init.chzzkIDList.loc[self.data.chzzkID, "channel_code"])
-                if self.data.cid != self.init.chzzk_titleData.loc[self.data.chzzkID, 'chatChannelId']:
+                #채팅 방 코드가 달라졌는지 확인 후 연결
+                self.data.cid = chzzk_api.fetch_chatChannelId(self.chzzkIDList.loc[self.data.chzzkID, "channel_code"])
+                if self.data.cid != self.chzzk_titleData.loc[self.data.chzzkID, 'chatChannelId']:
                     self.change_chatChannelId()
-                    return 2
+                return 2
             
-            if self.data.chzzk_chat_count == 0 or self.init.chat_json[self.data.chzzkID] or if_last_chat(self.data.last_chat_time):
+            if self.data.chzzk_chat_count == 0 or self.chat_json[self.data.chzzkID] :
                 return 1
             
         except Exception as e: asyncio.create_task(DiscordWebhookSender()._log_error(f"error if_chzzk_Join {self.data.chzzkID}.{e}"))
         return 0
 
     def change_chatChannelId(self):
-        idx = {chzzk: i for i, chzzk in enumerate(self.init.chzzk_titleData["channelID"])}
-        self.init.chzzk_titleData.loc[self.data.chzzkID, 'oldChatChannelId'] = self.init.chzzk_titleData.loc[self.data.chzzkID, 'chatChannelId']
-        self.init.chzzk_titleData.loc[self.data.chzzkID, 'chatChannelId'] = self.data.cid
+        idx = {chzzk: i for i, chzzk in enumerate(self.chzzk_titleData["channelID"])}
+        self.chzzk_titleData.loc[self.data.chzzkID, 'oldChatChannelId'] = self.chzzk_titleData.loc[self.data.chzzkID, 'chatChannelId']
+        self.chzzk_titleData.loc[self.data.chzzkID, 'chatChannelId'] = self.data.cid
         updates = {
-            'oldChatChannelId': self.init.chzzk_titleData.loc[self.data.chzzkID, 'oldChatChannelId'],
-            'chatChannelId': self.init.chzzk_titleData.loc[self.data.chzzkID, 'chatChannelId']}
-        self.init.chzzk_titleData.loc[self.data.chzzkID, updates.keys()] = updates.values()
+            'oldChatChannelId': self.chzzk_titleData.loc[self.data.chzzkID, 'oldChatChannelId'],
+            'chatChannelId': self.chzzk_titleData.loc[self.data.chzzkID, 'chatChannelId']}
+        self.chzzk_titleData.loc[self.data.chzzkID, updates.keys()] = updates.values()
 
         supabase_data = {
             "idx": idx[self.data.chzzkID],
@@ -490,7 +494,7 @@ class chzzk_chat_message:
         
     async def sendHi(self, himent):
         if self.if_chzzk_Join() == 2:
-            asyncio.create_task(DiscordWebhookSender()._log_error(f"send hi {self.init.chzzkIDList.loc[self.data.chzzkID, 'channelName']} {self.data.cid}"))
+            asyncio.create_task(DiscordWebhookSender()._log_error(f"send hi {self.chzzkIDList.loc[self.data.chzzkID, 'channelName']} {self.data.cid}"))
             self._send(himent)
 
     def onAirChat(self, message):
@@ -510,7 +514,7 @@ class chzzk_chat_message:
         if byement: self._send(byement)
 
     def chzzk_connect_count(self, num = 1):
-        if self.data.chzzk_chat_count > 0 and self.init.chzzk_titleData.loc[self.data.chzzkID,"live_state"] == "OPEN": self.data.chzzk_chat_count -= num
+        if self.data.chzzk_chat_count > 0 and self.chzzk_titleData.loc[self.data.chzzkID,"live_state"] == "OPEN": self.data.chzzk_chat_count -= num
         if self.data.chzzk_chat_count < 0: self.data.chzzk_chat_count = 0
 
 

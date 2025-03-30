@@ -1,4 +1,4 @@
-import os
+from os import environ
 import logging
 import asyncio
 import aiohttp
@@ -64,17 +64,13 @@ class youtubeVideoData:
 	youtubeChannelIdx: int = 0
 
 @dataclass
-class cafeVarData:
-	message_list: list = field(default_factory=list)
-
-@dataclass
 class iconLinkData:
-	chzzk_icon: str = os.environ['CHZZK_ICON']
-	afreeca_icon: str = os.environ['AFREECA_ICON']
-	soop_icon: str = os.environ['SOOP_ICON']
-	black_img: str = os.environ['BLACK_IMG']
-	youtube_icon: str = os.environ['YOUTUBE_ICON']
-	cafe_icon: str = os.environ['CAFE_ICON']
+	chzzk_icon: str = environ['CHZZK_ICON']
+	afreeca_icon: str = environ['AFREECA_ICON']
+	soop_icon: str = environ['SOOP_ICON']
+	black_img: str = environ['BLACK_IMG']
+	youtube_icon: str = environ['YOUTUBE_ICON']
+	cafe_icon: str = environ['CAFE_ICON']
 
 class AsyncLogger:
     def __init__(self, bot_url, max_workers=3):
@@ -134,50 +130,89 @@ class AsyncLogger:
         self.executor.shutdown(wait=True)
   
 
-async def userDataVar(init: initVar):
-	try:
-		supabase = create_client(os.environ['supabase_url'], os.environ['supabase_key'])
-		
-		date_update = supabase.table('date_update').select("*").execute()
-		update_data = date_update.data[0]
+async def userDataVar(init: initVar, supabase):
+    try:
+        
+        # 1. 업데이트 정보 가져오기
+        date_update = await asyncio.to_thread(
+            lambda: supabase.table('date_update').select("*").execute()
+        )
+        update_data = date_update.data[0]
 
-		for attr, value in {
-			'youtube_TF': update_data['youtube_TF'],
-			'chat_json': update_data['chat_json']
-		}.items():
-			setattr(init, attr, value)
+        # 단순 속성 설정
+        for attr, value in {
+            'youtube_TF': update_data['youtube_TF'],
+            'chat_json': update_data['chat_json']
+        }.items():
+            setattr(init, attr, value)
 
-		if update_data['user_date']:
-			userStateData = supabase.table('userStateData').select("*").execute()
-			init.userStateData = re_idx(make_list_to_dict(userStateData.data))
-			init.userStateData.index = list(init.userStateData['discordURL'])
-			await update_flag(supabase, 'user_date', False)
+        # 병렬로 필요한 데이터 로드
+        tasks = []
+        
+        if update_data['user_date']:
+            tasks.append(load_user_state_data(init, supabase))
+            
+        if update_data['all_date']:
+            tasks.append(discordBotDataVars(init))
+            
+        # 모든 작업 기다리기
+        if tasks:
+            await asyncio.gather(*tasks)
 
-		if update_data['all_date']:
-			await discordBotDataVars(init)
-			await update_flag(supabase, 'all_date', False)
+    except Exception as e:
+        error_details = f"Error in userDataVar: {str(e)}"
+        if hasattr(e, 'response'):
+            error_details += f"\nResponse: {e.response.text}"
+        
+        if "EOF occurred in violation of protocol" in str(e):
+            error_details += "\nSSL connection error occurred"
+            
+        asyncio.create_task(DiscordWebhookSender()._log_error(error_details))
 
-	except Exception as e:
-		error_details = f"Error in userDataVar: {str(e)}"
-		if hasattr(e, 'response'):
-			error_details += f"\nResponse: {e.response.text}"
-		
-		if "EOF occurred in violation of protocol" in str(e):
-			error_details += "\nSSL connection error occurred"
-			
-		asyncio.create_task(DiscordWebhookSender()._log_error(error_details))
+async def load_user_state_data(init, supabase):
+    # 사용자 상태 데이터 로드
+    userStateData = await asyncio.to_thread(
+        lambda: supabase.table('userStateData').select("*").execute()
+    )
+    init.userStateData = re_idx(make_list_to_dict(userStateData.data))
+    init.userStateData.index = list(init.userStateData['discordURL'])
+    
+    # 플래그 업데이트
+    await update_flag(supabase, 'user_date', False)
 
 async def update_flag(supabase, field, value):
-	#플래그 업데이트를 위한 헬퍼 함수
-	supabase.table('date_update').upsert({
-		"idx": 0,
-		field: value
-	}).execute()
+    # 비동기로 플래그 업데이트
+    await asyncio.to_thread(
+        lambda: supabase.table('date_update').upsert({
+            "idx": 0,
+            field: value
+        }).execute()
+    )
+
+# async def cached_query(supabase, table, query_func, cache_key, ttl=60):
+# 	# 메모리 캐시 초기화
+# 	_cache = {}
+# 	_cache_expiry = {}
+# 	"""캐싱 메커니즘이 있는 쿼리 실행"""
+# 	now = datetime.now()
+	
+# 	# 캐시가 유효한지 확인
+# 	if cache_key in _cache and _cache_expiry[cache_key] > now:
+# 		return _cache[cache_key]
+	
+# 	# 캐시가 없거나 만료된 경우 쿼리 실행
+# 	result = await asyncio.to_thread(query_func)
+	
+# 	# 결과 캐싱
+# 	_cache[cache_key] = result
+# 	_cache_expiry[cache_key] = now + ttl
+	
+# 	return result
 
 async def discordBotDataVars(init: initVar):
 	while True:
 		try:
-			supabase = create_client(os.environ['supabase_url'], os.environ['supabase_key'])
+			supabase = create_client(environ['supabase_url'], environ['supabase_key'])
 			
 			# 모든 테이블 이름을 리스트로 정의
 			table_names = [
@@ -243,103 +278,6 @@ def make_list_to_dict(data):
 		key: [item[key] for item in data]
 		for key in data[0].keys()
 	})
-
-# async def async_post_message(arr, max_retries=3, max_concurrent=5):
-# 	async def send_message_with_retry(session, url, data, max_retries, semaphore):
-# 		async with semaphore:
-# 			for attempt in range(max_retries):
-# 				try:
-# 					async with session.post(url, json=data, timeout=15) as response:
-# 						response.raise_for_status()
-# 						return await response.text()
-# 				except ClientError as e:
-# 					if response.status == 404:
-# 						print(f"404 error for URL {url}. Deleting user data...")
-# 						asyncio.create_task(handle_404_error(url))  # 🔹 별도 비동기 태스크로 실행
-
-# 					if attempt == max_retries - 1:
-# 						print(f"Failed to send message to {url} after {max_retries} attempts: {str(e)}")
-# 						asyncio.create_task(handle_failure(url))  # 🔹 DB 삭제 및 플래그 업데이트를 별도 태스크로 실행
-# 						asyncio.create_task(del_userStateData(url))
-
-# 					await asyncio.sleep(0.2 * 2**attempt)  # Exponential backoff
-# 				except asyncio.TimeoutError:
-# 					print(f"{datetime.now()} timeout send_message_with_retry {str(data)}")
-# 					if attempt == max_retries - 1:
-# 						return None
-# 					await asyncio.sleep(0.2 * 2**attempt)  # Exponential backoff
-# 				except Exception as e:
-# 					print(f"Unexpected error in send_message_with_retry: {e}")
-# 					if attempt == max_retries - 1:
-# 						return None
-# 					await asyncio.sleep(0.2 * 2**attempt)  # Exponential backoff
-
-# 	async def handle_404_error(url):
-# 		"""404 에러 발생 시 비동기로 데이터 삭제"""
-# 		# Supabase 삭제 코드 (예제)
-# 		print(f"Handling 404 error for {url} asynchronously")
-
-# 	async def handle_failure(url):
-# 		"""요청 실패 시 DB 삭제 및 업데이트"""
-# 		# Supabase 삭제 및 업데이트 코드
-# 		print(f"Handling failed request for {url} asynchronously")
-
-# 	async def del_userStateData(url):
-# 		supabase = create_client(os.environ['supabase_url'], os.environ['supabase_key'])
-# 		userStateData = supabase.table('userStateData').select("*").execute()
-# 		userStateData = re_idx(make_list_to_dict(userStateData.data))
-# 		idx = userStateData['idx'][userStateData.index[userStateData["discordURL"]==url]].values[0]
-# 		supabase.table('userStateData').delete().eq('idx', idx).execute()
-# 		await update_flag(supabase, 'all_date', True)
-# 		asyncio.create_task(DiscordWebhookSender()._log_error(f"Non-existent url:{url}.idx:{idx}"))
-
-# 	semaphore = asyncio.Semaphore(max_concurrent)
-# 	async with ClientSession(connector=TCPConnector(ssl=False)) as session:
-# 		tasks = [asyncio.create_task(send_message_with_retry(session, url, data, max_retries, semaphore)) for url, data in arr]
-
-# 		# 🔹 완료된 태스크부터 즉시 처리
-# 		responses = []
-# 		for task in asyncio.as_completed(tasks):
-# 			result = await task
-# 			if result is not None:
-# 				responses.append(result)
-
-# 		return responses
-
-# async def async_errorPost(msg, errorPostBotURL=os.environ.get('errorPostBotURL')):
-# 	max_retries = 5
-# 	base_delay = 0.3  # 초기 대기 시간 (초)
-
-# 	for attempt in range(max_retries):
-# 		try:
-# 			data = {'content': msg, "username": "error alarm"}
-# 			print(f"{datetime.now()} {msg}")
-			
-# 			if not errorPostBotURL:
-# 				print("Error: errorPostBotURL is not set")
-# 				return
-
-# 			async with ClientSession() as session:
-# 				async with session.post(errorPostBotURL, json=data, timeout=10) as response:
-# 					response_text = await response.text()
-# 					if response.status == 429:
-# 						retry_after = float(response.headers.get('Retry-After', 1))
-# 						await asyncio.sleep(retry_after)
-# 						continue
-# 					return  # 성공적으로 요청을 보냈거나, 429가 아닌 다른 에러 발생 시 함수 종료
-
-# 		except asyncio.TimeoutError:
-# 			print(f"{datetime.now()} Timeout error while posting: {msg}")
-# 			return None
-# 		except ClientError as client_error:
-# 			print(f"{datetime.now()} Client error: {client_error} - {msg}")
-# 		except Exception as e:
-# 			print(f"{datetime.now()} Unexpected error: {type(e).__name__}: {e} - {msg}")
-
-# 		# 재시도 전 대기
-# 		await asyncio.sleep(base_delay * (2 ** attempt))
-
-# 	print(f"Failed to post message after {max_retries} attempts: {msg}")
 
 def fCount(init: initVar): #function to count
 	if init.count >= init.SEC:
@@ -410,8 +348,8 @@ def subjectReplace(subject: str) -> str:
 	return subject
 
 def getTwitchHeaders(): 
-	twitch_Client_ID = os.environ['twitch_Client_ID']
-	twitch_Client_secret = os.environ['twitch_Client_secret']
+	twitch_Client_ID = environ['twitch_Client_ID']
+	twitch_Client_secret = environ['twitch_Client_secret']
 
 	oauth_key = post(	"https://id.twitch.tv/oauth2/token?client_id=" +
 						twitch_Client_ID + "&client_secret=" +
@@ -420,7 +358,7 @@ def getTwitchHeaders():
 	authorization = 'Bearer ' + loads(oauth_key.text)["access_token"]
 	return {'client-id': twitch_Client_ID, 'Authorization': authorization} #get headers 
 def getChzzkHeaders(): return {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'} #get headers 
-def getChzzkCookie(): return {'NID_AUT': os.environ['NID_AUT'],'NID_SES':os.environ['NID_SES']} 
+def getChzzkCookie(): return {'NID_AUT': environ['NID_AUT'],'NID_SES':environ['NID_SES']} 
 
 async def should_terminate(sock, ID):
 	try:
@@ -440,10 +378,10 @@ async def should_terminate(sock, ID):
 
 def if_after_time(time_str, sec = 300): # 지금 시간이 이전 시간보다 SEC초 만큼 지났는지 확인
 	time = datetime(int(time_str[:4]),int(time_str[5:7]),int(time_str[8:10]),int(time_str[11:13]),int(time_str[14:16]),int(time_str[17:19])) + timedelta(seconds=sec)
-	return time.isoformat() <= datetime.now().isoformat()
+	return time <= datetime.now()
 
 def if_last_chat(last_chat_time: datetime, sec = 300): #마지막 채팅을 읽어온지 sec초가 지났다면 True
-    return (last_chat_time + timedelta(seconds=sec)).isoformat() <= datetime.now().isoformat()
+    return (last_chat_time + timedelta(seconds=sec)) <= datetime.now()
 
 async def timer(time): 
 	await asyncio.sleep(time)  # time 초 대기
@@ -585,7 +523,7 @@ async def save_airing_data(init: initVar, platform, id_):
 
 	for _ in range(3):
 		try:
-			supabase = create_client(os.environ['supabase_url'], os.environ['supabase_key'])
+			supabase = create_client(environ['supabase_url'], environ['supabase_key'])
 			supabase.table(table_name).upsert(data_func()).execute()
 			break
 		except Exception as e:
@@ -630,7 +568,7 @@ async def save_profile_data(init: initVar, platform, id):
 
 	for _ in range(3):
 		try:
-			supabase = create_client(os.environ['supabase_url'], os.environ['supabase_key'])
+			supabase = create_client(environ['supabase_url'], environ['supabase_key'])
 			supabase.table(table_name).upsert(data_func()).execute()
 			break
 		except Exception as e:
@@ -654,7 +592,7 @@ async def chzzk_saveVideoData(init: initVar, chzzkID, videoNo, videoTitle, publi
 
 			chzzk_video_json["publishDate"] = publishDate
 
-			supabase = create_client(os.environ['supabase_url'], os.environ['supabase_key'])
+			supabase = create_client(environ['supabase_url'], environ['supabase_key'])
 			supabase.table('chzzk_video').upsert({
 				"idx": idx[chzzkID],
 				'VOD_json': init.chzzk_video.loc[chzzkID, 'VOD_json']
@@ -664,35 +602,5 @@ async def chzzk_saveVideoData(init: initVar, chzzkID, videoNo, videoTitle, publi
 			asyncio.create_task(DiscordWebhookSender()._log_error(f"error saving profile data {e}"))
 			await asyncio.sleep(0.5)
 
-def saveCafeData(init: initVar, cafeID):
-	try:
-		# 인덱스 생성을 dict comprehension으로 더 간단하게
-		idx = {cafe: i for i, cafe in enumerate(init.cafeData["channelID"])}
-		
-		# 데이터 준비를 별도로 하여 가독성 향상
-		cafe_data = {
-			"idx": idx[cafeID],
-			"update_time": int(init.cafeData.loc[cafeID, 'update_time']),
-			"cafe_json": init.cafeData.loc[cafeID, 'cafe_json'],
-			"cafeNameDict": init.cafeData.loc[cafeID, 'cafeNameDict']
-		}
-		
-		# supabase 클라이언트 생성
-		supabase = create_client(os.environ['supabase_url'], os.environ['supabase_key'])
-		
-		# 데이터 저장
-		supabase.table('cafeData').upsert(cafe_data).execute()
-		
-	except Exception as e:
-		asyncio.create_task(DiscordWebhookSender()._log_error(f"error save cafe time {e}"))
-	
-# def post_message(init, arr):
-# 	list_of_urls = []
-	
-# 	for i in range(0, len(arr), init.requestListSize):list_of_urls.append(arr[i: i+init.requestListSize])
 
-# 	for i in range(len(list_of_urls)):
-# 		with ThreadPoolExecutor(max_workers=len(list_of_urls[i])) as pool:
-# 			list(pool.map(post_url_json,list_of_urls[i]))
-
-# def post_url_json(args): return post(args[0], json=args[1], timeout=30)
+	
