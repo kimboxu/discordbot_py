@@ -36,63 +36,13 @@ class getCafePostTitle:
             await self.postCafe()
                 
         except Exception as e:
-            asyncio.create_task(DiscordWebhookSender()._log_error(f"error cafe {self.channelID}.{e}"))
-
-    # async def getCafeDataDic(self):
-    #     try:
-    #         response_list = await get_message(self.get_article_list() , "cafe")
-    #     except:
-    #         return
-
-    #     cafe_json_ref_articles = self.cafeData.loc[self.channelID, 'cafe_json']["refArticleId"]
-    #     max_ref_article = max(cafe_json_ref_articles)
-    #     update_time = int(self.cafeData.loc[self.channelID, 'update_time'])
-    #     cafe_name_dict = self.cafeData.loc[self.channelID, "cafeNameDict"]
-
-    #     for response in response_list:
-    #         for request, is_success in response:
-    #             if not is_success: 
-    #                 continue
-                
-    #             try:
-    #                 for Article in request['message']['result']['articleList'][::-1]:
-    #                     if Article["writerNickname"] not in cafe_name_dict.keys():
-    #                         continue
-
-    #                     if not (Article["refArticleId"] > max_ref_article and 
-    #                             Article['writeDateTimestamp'] > update_time):
-    #                         continue
-
-    #                     Article["subject"] = subjectReplace(Article["subject"])
-    #                     self.cafeData.loc[self.channelID, 'update_time'] = max(self.cafeData.loc[self.channelID, 'update_time'], Article["writeDateTimestamp"])
-
-    #                     # Update cafe_json refArticleId list
-    #                     if len(cafe_json_ref_articles) >= 10:
-    #                         cafe_json_ref_articles[:-1] = cafe_json_ref_articles[1:]
-    #                         cafe_json_ref_articles[-1] = Article["refArticleId"]
-    #                     else:
-    #                         cafe_json_ref_articles.append(Article["refArticleId"])
-
-    #                     # CafePostData 객체 생성
-    #                     cafe_post = CafePostData(
-    #                         cafe_link=f"https://cafe.naver.com/{self.channelID}/{Article['refArticleId']}",
-    #                         menu_id=Article["menuId"],
-    #                         menu_name=Article["menuName"],
-    #                         subject=Article["subject"],
-    #                         image=Article.get("representImage", ""),
-    #                         write_timestamp=Article["writeDateTimestamp"],
-    #                         writer_nickname=Article["writerNickname"]
-    #                     )
-    #                     self.message_list.append(cafe_post)
-    #             except:
-    #                 continue
-
+            asyncio.create_task(DiscordWebhookSender._log_error(f"error cafe {self.channelID}.{e}"))
 
     async def getCafeDataDic(self):
         try:
             response_list = await get_message(self.get_article_list(), "cafe")
         except Exception as e:
-            asyncio.create_task(DiscordWebhookSender()._log_error(f"카페 데이터 조회 중 오류 발생: {e}"))
+            asyncio.create_task(DiscordWebhookSender._log_error(f"카페 데이터 조회 중 오류 발생: {e}"))
             return
         
         cafe_json = self.cafeData.loc[self.channelID, 'cafe_json']
@@ -109,7 +59,7 @@ class getCafePostTitle:
                 try:
                     self._process_article_list(request, cafe_name_dict, max_ref_article, update_time, cafe_json_ref_articles)
                 except Exception as e:
-                    asyncio.create_task(DiscordWebhookSender()._log_error(f"게시글 처리 중 오류 발생: {e}"))
+                    asyncio.create_task(DiscordWebhookSender._log_error(f"게시글 처리 중 오류 발생: {e}"))
                     continue
         
         return
@@ -195,9 +145,9 @@ class getCafePostTitle:
             
             tasks = []
             for post_data in self.message_list:
-                json_data = self.create_cafe_json(post_data)
-                print(f"{datetime.now()} {post_data.writer_nickname} post cafe")
-                task = DiscordWebhookSender().send_messages(get_cafe_list_of_urls(self.DO_TEST, self.userStateData, self.channelID, json_data, post_data.writerNickname))
+                json_data = await self.create_cafe_json(post_data)
+                print(f"{datetime.now()} {post_data.writer_nickname} post cafe {post_data.subject}")
+                task = DiscordWebhookSender().send_messages(get_cafe_list_of_urls(self.DO_TEST, self.userStateData, self.channelID, json_data, post_data.writer_nickname))
                 tasks.append(task)
             
             if tasks:
@@ -206,9 +156,9 @@ class getCafePostTitle:
             self.saveCafeData()
             
         except Exception as e:
-            asyncio.create_task(DiscordWebhookSender()._log_error(f"error postCafe {e}"))
+            asyncio.create_task(DiscordWebhookSender._log_error(f"error postCafe {e}"))
 
-    def create_cafe_json(self, post_data: CafePostData) -> dict:
+    async def create_cafe_json(self, post_data: CafePostData) -> dict:
         def getTime(timestamp):
             tm = gmtime(timestamp/1000)
             return f"{tm.tm_year}-{tm.tm_mon:02d}-{tm.tm_mday:02d}T{tm.tm_hour:02d}:{tm.tm_min:02d}:{tm.tm_sec:02d}Z"
@@ -240,7 +190,7 @@ class getCafePostTitle:
 
         return {
             "username": f"[카페 알림] {cafe_info['cafeName']} - {post_data.writer_nickname}",
-            "avatar_url": self.get_cafe_thumbnail_url(post_data.writer_nickname),
+            "avatar_url": await self.get_cafe_thumbnail_url(post_data.writer_nickname),
             "embeds": [embed]
         }
         
@@ -310,7 +260,7 @@ class getCafePostTitle:
 
         except Exception as e:
             error_msg = f"카페 썸네일 가져오기 실패 (작성자: {writerNickname}, 플랫폼: {platform if 'platform' in locals() else 'unknown'}): {str(e)}"
-            asyncio.create_task(DiscordWebhookSender()._log_error(error_msg))
+            asyncio.create_task(DiscordWebhookSender._log_error(error_msg))
             
             # 오류 발생 시 기존 썸네일 반환
             return current_thumbnail if 'current_thumbnail' in locals() else None
@@ -335,7 +285,7 @@ class getCafePostTitle:
             supabase.table('cafeData').upsert(cafe_data).execute()
             
         except Exception as e:
-            asyncio.create_task(DiscordWebhookSender()._log_error(f"error save cafe time {e}"))
+            asyncio.create_task(DiscordWebhookSender._log_error(f"error save cafe time {e}"))
     
 # 사용 예:
 # async def main():

@@ -167,7 +167,7 @@ async def userDataVar(init: initVar, supabase):
         if "EOF occurred in violation of protocol" in str(e):
             error_details += "\nSSL connection error occurred"
             
-        asyncio.create_task(DiscordWebhookSender()._log_error(error_details))
+        asyncio.create_task(DiscordWebhookSender._log_error(error_details))
 
 async def load_user_state_data(init, supabase):
     # 사용자 상태 데이터 로드
@@ -256,7 +256,7 @@ async def discordBotDataVars(init: initVar):
 			break
 			
 		except Exception as e:
-			asyncio.create_task(DiscordWebhookSender()._log_error((f"Error in discordBotDataVars: {e}")))
+			asyncio.create_task(DiscordWebhookSender._log_error((f"Error in discordBotDataVars: {e}")))
 			if init.count != 0: break
 			await asyncio.sleep(0.5)
 
@@ -437,7 +437,7 @@ def twitch_getChannelOffStateData(offStateList, twitchID):
 				)
 		return None, None, None
 	except Exception as e:
-		asyncio.create_task(DiscordWebhookSender()._log_error(f"error getChannelOffStateData twitch {e}"))
+		asyncio.create_task(DiscordWebhookSender._log_error(f"error getChannelOffStateData twitch {e}"))
 		return None, None, None
 
 def chzzk_getChannelOffStateData(stateData, chzzkID, channel_thumbnail = ""):
@@ -450,7 +450,7 @@ def chzzk_getChannelOffStateData(stateData, chzzkID, channel_thumbnail = ""):
 			)
 		return None, None, channel_thumbnail
 	except Exception as e: 
-		asyncio.create_task(DiscordWebhookSender()._log_error(f"error getChannelOffStateData chzzk {e}"))
+		asyncio.create_task(DiscordWebhookSender._log_error(f"error getChannelOffStateData chzzk {e}"))
 		return None, None, channel_thumbnail
 
 def afreeca_getChannelOffStateData(stateData, afreecaID, channel_thumbnail = ""):
@@ -464,7 +464,7 @@ def afreeca_getChannelOffStateData(stateData, afreecaID, channel_thumbnail = "")
 			return live, title, thumbnail_url
 		return None, None, channel_thumbnail
 	except Exception as e: 
-		asyncio.create_task(DiscordWebhookSender()._log_error(f"error getChannelOffStateData afreeca {e}"))
+		asyncio.create_task(DiscordWebhookSender._log_error(f"error getChannelOffStateData afreeca {e}"))
 
 def afreeca_getiflive(stateData):
 	try:
@@ -473,7 +473,7 @@ def afreeca_getiflive(stateData):
 			thumbnail_url = f"https:{thumbnail_url}"
 		return thumbnail_url
 	except Exception as e:
-		asyncio.create_task(DiscordWebhookSender()._log_error(f"error getChannelOffStateData {e}"))
+		asyncio.create_task(DiscordWebhookSender._log_error(f"error getChannelOffStateData {e}"))
 		return None
 
 async def save_airing_data(init: initVar, platform, id_):
@@ -516,7 +516,7 @@ async def save_airing_data(init: initVar, platform, id_):
 	}
 
 	if platform not in platform_configs:
-		asyncio.create_task(DiscordWebhookSender()._log_error(f"Unsupported platform: {platform}"))
+		asyncio.create_task(DiscordWebhookSender._log_error(f"Unsupported platform: {platform}"))
 		return
 	
 	table_name, data_func = platform_configs[platform]
@@ -527,7 +527,7 @@ async def save_airing_data(init: initVar, platform, id_):
 			supabase.table(table_name).upsert(data_func()).execute()
 			break
 		except Exception as e:
-			asyncio.create_task(DiscordWebhookSender()._log_error(f"error saving profile data {e}"))
+			asyncio.create_task(DiscordWebhookSender._log_error(f"error saving profile data {e}"))
 			await asyncio.sleep(0.5)
 
 async def save_profile_data(init: initVar, platform, id):
@@ -561,7 +561,7 @@ async def save_profile_data(init: initVar, platform, id):
 	}
 
 	if platform not in platform_configs:
-		asyncio.create_task(DiscordWebhookSender()._log_error(f"Unsupported platform: {platform}"))
+		asyncio.create_task(DiscordWebhookSender._log_error(f"Unsupported platform: {platform}"))
 		return
 
 	table_name, data_func = platform_configs[platform]
@@ -572,5 +572,5 @@ async def save_profile_data(init: initVar, platform, id):
 			supabase.table(table_name).upsert(data_func()).execute()
 			break
 		except Exception as e:
-			asyncio.create_task(DiscordWebhookSender()._log_error(f"error saving profile data {e}"))
+			asyncio.create_task(DiscordWebhookSender._log_error(f"error saving profile data {e}"))
 			await asyncio.sleep(0.5)

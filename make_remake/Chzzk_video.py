@@ -48,7 +48,7 @@ class chzzk_video:
                 try:
                     await self._process_video_data(stateData, chzzkID)
                 except Exception as e:
-                    asyncio.create_task(DiscordWebhookSender()._log_error(f"error get stateData chzzk video.{chzzkID}.{e}."))
+                    asyncio.create_task(DiscordWebhookSender._log_error(f"error get stateData chzzk video.{chzzkID}.{e}."))
 
     def _should_process_video(self, stateData, should_process):
         return should_process and stateData["code"] == 200
@@ -71,7 +71,7 @@ class chzzk_video:
         # 비디오 데이터 처리 및 저장
         json_data = self.getChzzk_video_json(chzzkID, stateData)
         self.data.video_alarm_List.append((chzzkID, json_data, videoTitle))
-        await self.chzzk_saveVideoData(videoNo, videoTitle, publishDate)
+        await self.chzzk_saveVideoData(chzzkID, videoNo, videoTitle, publishDate)
  
     async def post_chzzk_video(self):
         def ifAlarm(discordWebhookURL):
@@ -101,7 +101,7 @@ class chzzk_video:
             # await async_post_message(make_list_of_urls(json_data))
 
         except Exception as e:
-            asyncio.create_task(DiscordWebhookSender()._log_error(f"postLiveMSG {e}"))
+            asyncio.create_task(DiscordWebhookSender._log_error(f"postLiveMSG {e}"))
             self.data.video_alarm_List.clear()
 
     def getChzzk_video_json(self, chzzkID, stateData):
@@ -160,12 +160,12 @@ class chzzk_video:
             data["thumbnailImageUrl"],
             data["videoCategoryValue"]
         )
-    async def chzzk_saveVideoData(self, videoNo, videoTitle, publishDate): #save profile data
+    async def chzzk_saveVideoData(self, chzzkID, videoNo, videoTitle, publishDate): #save profile data
         idx = {chzzk: i for i, chzzk in enumerate(self.chzzk_video["channelID"])}
         supabase = create_client(environ['supabase_url'], environ['supabase_key'])
         for _ in range(3):
             try:
-                chzzk_video_json = self.chzzk_video.loc[self.chzzkID, 'VOD_json']
+                chzzk_video_json = self.chzzk_video.loc[chzzkID, 'VOD_json']
 
                 chzzk_video_json["videoTitle3"] = chzzk_video_json["videoTitle2"]
                 chzzk_video_json["videoTitle2"] = chzzk_video_json["videoTitle1"]
@@ -179,10 +179,10 @@ class chzzk_video:
 
                 
                 supabase.table('chzzk_video').upsert({
-                    "idx": idx[self.chzzkID],
-                    'VOD_json': self.chzzk_video.loc[self.chzzkID, 'VOD_json']
+                    "idx": idx[chzzkID],
+                    'VOD_json': self.chzzk_video.loc[chzzkID, 'VOD_json']
                 }).execute()
                 break
             except Exception as e:
-                asyncio.create_task(DiscordWebhookSender()._log_error(f"error saving profile data {e}"))
+                asyncio.create_task(DiscordWebhookSender._log_error(f"error saving profile data {e}"))
                 await asyncio.sleep(0.5)

@@ -80,7 +80,7 @@ class AfreecaChat:
             try:
                 await self._connect_and_run()
             except Exception as e:
-                await DiscordWebhookSender()._log_error(f"error in chat manager: {e}")
+                await DiscordWebhookSender._log_error(f"error in chat manager: {e}")
                 self._change_afreeca_chat_json()
             finally:
                 await self._cleanup_tasks()
@@ -112,8 +112,7 @@ class AfreecaChat:
                     # Optionally wait for task to actually cancel
                     await asyncio.wait([task], timeout=2)
                 except Exception as cancel_error:
-                    error_logger = DiscordWebhookSender()
-                    await error_logger._log_error(f"Error cancelling task for {self.data.afreecaID}: {cancel_error}")
+                    await DiscordWebhookSender._log_error(f"Error cancelling task for {self.data.afreecaID}: {cancel_error}")
 
     async def connect(self):
             CONNECT_PACKET = f'{self.ESC}000100000600{self.F*3}16{self.F}'
@@ -122,7 +121,7 @@ class AfreecaChat:
             await self.data.sock.send(CONNECT_PACKET)
 
             chatChannelId = self.afreeca_titleData.loc[self.data.afreecaID, 'chatChannelId']
-            asyncio.create_task(DiscordWebhookSender()._log_error(f"{self.data.afreecaID} 연결 완료 {chatChannelId}", webhook_url=environ['chat_post_url']))
+            asyncio.create_task(DiscordWebhookSender._log_error(f"{self.data.afreecaID} 연결 완료 {chatChannelId}", webhook_url=environ['chat_post_url']))
 
             await asyncio.sleep(2)
             await self.data.sock.send(JOIN_PACKET)
@@ -140,11 +139,11 @@ class AfreecaChat:
                 except asyncio.TimeoutError:
                     continue
                 except Exception as e:
-                    await DiscordWebhookSender()._log_error(f"Error during ping wait: {e}")
+                    await DiscordWebhookSender._log_error(f"Error during ping wait: {e}")
                     break
                     
         except Exception as e:
-            await DiscordWebhookSender()._log_error(f"Error in ping function: {e}")
+            await DiscordWebhookSender._log_error(f"Error in ping function: {e}")
         
         print(f"{self.data.afreecaID} chat pong 종료")
     
@@ -156,7 +155,7 @@ class AfreecaChat:
                     except: pass
 
                 if self.data.sock.closed:
-                    asyncio.create_task(DiscordWebhookSender()._log_error(f"{self.data.afreecaID}: 연결 종료", webhook_url=environ['chat_post_url']))
+                    asyncio.create_task(DiscordWebhookSender._log_error(f"{self.data.afreecaID}: 연결 종료", webhook_url=environ['chat_post_url']))
                     break
 
                 raw_message = await asyncio.wait_for(self.data.sock.recv(), timeout=1)
@@ -166,10 +165,10 @@ class AfreecaChat:
             except asyncio.TimeoutError:
                 continue
             except websockets.exceptions.ConnectionClosed:
-                asyncio.create_task(DiscordWebhookSender()._log_error(f"{self.data.afreecaID}: 연결 비정상 종료"), webhook_url=environ['chat_post_url'])
+                asyncio.create_task(DiscordWebhookSender._log_error(f"{self.data.afreecaID}: 연결 비정상 종료"), webhook_url=environ['chat_post_url'])
                 break
             except Exception as e: 
-                asyncio.create_task(DiscordWebhookSender()._log_error(f"{self.data.afreecaID} afreeca chat test except {e}"))
+                asyncio.create_task(DiscordWebhookSender._log_error(f"{self.data.afreecaID} afreeca chat test except {e}"))
                 break
 
     async def _decode_message(self, message_queue: asyncio.Queue):
@@ -180,7 +179,7 @@ class AfreecaChat:
             
             if self._is_invalid_message(messages):
                 if self.if_afreeca_chat(messages): 
-                    asyncio.create_task(DiscordWebhookSender()._log_error(f"아프리카 chat recv messages {messages}", webhook_url=environ['chat_post_url']))
+                    asyncio.create_task(DiscordWebhookSender._log_error(f"아프리카 chat recv messages {messages}", webhook_url=environ['chat_post_url']))
                 continue
             
             user_id, chat, nickname = messages[2], messages[1], messages[6]
@@ -212,7 +211,7 @@ class AfreecaChat:
                 self.data.chat_event.clear()
 
             except Exception as e:
-                asyncio.create_task(DiscordWebhookSender()._log_error(f"error postChat: {str(e)}"))
+                asyncio.create_task(DiscordWebhookSender._log_error(f"error postChat: {str(e)}"))
                 self.data.chat_event.clear()
  
     @staticmethod
@@ -236,7 +235,7 @@ class AfreecaChat:
         
         # 이미 처리된 메시지인지 확인
         if message_id in self.data.processed_messages:
-            asyncio.create_task(DiscordWebhookSender()._log_error(f"{datetime.now()} 중복 메시지 무시: {chat}"))
+            asyncio.create_task(DiscordWebhookSender._log_error(f"{datetime.now()} 중복 메시지 무시: {chat}"))
             return
             
         # 새 메시지 처리

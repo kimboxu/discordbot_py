@@ -29,18 +29,18 @@ oauth = os.environ['oauth']
 class twitch_chat_message:
 	def chatMsg(self, init): #function to chat message
 			if init.remainderChat != "NANCAHT" and init.remainderChat != "": #Check received chat error
-				if init.remainderChat.find("PONG") != -1: init.remainderChat = "NANCAHT"; asyncio.create_task(DiscordWebhookSender()._log_error("PONG"))
+				if init.remainderChat.find("PONG") != -1: init.remainderChat = "NANCAHT"; asyncio.create_task(DiscordWebhookSender._log_error("PONG"))
 			try:
 				init.sockDict["twitch"].send(bytes("PING\n", "ASCII")) #check non chat 
 				# init.TFJoin["twitch"] = 0
 			except:
-				asyncio.create_task(DiscordWebhookSender()._log_error("error: Failed to send message to twitch"))
+				asyncio.create_task(DiscordWebhookSender._log_error("error: Failed to send message to twitch"))
 				# init.TFJoin["twitch"] += 1
 				return
 			try:
 				self.getChatList(init)
 				if not init.DO_TEST: self.postChat(init) #post chat
-			except: asyncio.create_task(DiscordWebhookSender()._log_error("error chatMsg"))
+			except: asyncio.create_task(DiscordWebhookSender._log_error("error chatMsg"))
 
 	def getChatList(self, init): #get chat list
 		data = recv(init.sockDict["twitch"], int(init.packetSize))  #recv chat data
@@ -65,7 +65,7 @@ class twitch_chat_message:
 				list_of_urls = self.make_chat_list_of_urls(init, chatDic, chatDicKwey)
 				# post_message(init, list_of_urls)
 				if len(list_of_urls): print("post chat")
-		except: asyncio.create_task(DiscordWebhookSender()._log_error("error postChat"))
+		except: asyncio.create_task(DiscordWebhookSender._log_error("error postChat"))
 
 	def make_chat_list_of_urls(self, init, chatDic, chatDicKwey):
 		list_of_urls = []
@@ -81,7 +81,7 @@ class twitch_chat_message:
 						message = self.make_thumbnail_url(init, name, chat, channelName, channelID)
 						list_of_urls.append((discordWebhookURL, message))
 				except: pass
-		except: asyncio.create_task(DiscordWebhookSender()._log_error(f"error postChat test .{init.userStateData[f'{channelID}방 채팅알림']}."))
+		except: asyncio.create_task(DiscordWebhookSender._log_error(f"error postChat test .{init.userStateData[f'{channelID}방 채팅알림']}."))
 		return list_of_urls
 
 	def addChat(self, init): #add chat
@@ -98,7 +98,7 @@ class twitch_chat_message:
 					else:
 						chatDic[name, channelID] = chatDic[name, channelID] + "\n" + str(chat)
 						init.twitch_chatList = init.twitch_chatList[1:]
-		except: asyncio.create_task(DiscordWebhookSender()._log_error("error addChat"))
+		except: asyncio.create_task(DiscordWebhookSender._log_error("error addChat"))
 		return chatDic
 
 	def checkPacket(self, init, dataLen):
@@ -126,8 +126,8 @@ class twitch_chat_message:
 				if offState.status_code == 200:
 					_, _, thumbnail_url = twitch_getChannelOffStateData(loads(offState.text)["data"], name)
 					if thumbnail_url.find("https://static-cdn.jtvnw.net") != -1: break
-				else: asyncio.create_task(DiscordWebhookSender()._log_error("offState.status_code not 200"))
-			except: asyncio.create_task(DiscordWebhookSender()._log_error("error make thumbnail url ", str(offState.text)))
+				else: asyncio.create_task(DiscordWebhookSender._log_error("offState.status_code not 200"))
+			except: asyncio.create_task(DiscordWebhookSender._log_error("error make thumbnail url ", str(offState.text)))
 
 		return {'content'   : chat,
 				"username"  : channelName + " >> " + init.channelList.loc[0,channelID],
@@ -171,13 +171,13 @@ def twitch_joinchat(init): #join twitch chat,(30/20SEC recv able)
 			# pprint(base.recv(sock, int(init.packetSize/2), init))
 			recv(sock, int(init.packetSize/8))
 			break
-		except: asyncio.create_task(DiscordWebhookSender()._log_error("join error"))
+		except: asyncio.create_task(DiscordWebhookSender._log_error("join error"))
 	init.sockDict["twitch"] = sock
 
 def send(sock, msg, init):
 	try: sock.send((msg + "\n").encode())
 	except Exception as e: 
-		asyncio.create_task(DiscordWebhookSender()._log_error(f"send error {e}"))
+		asyncio.create_task(DiscordWebhookSender._log_error(f"send error {e}"))
 		init.count = -1
 
 def recv(sock, buff_size):
@@ -185,5 +185,5 @@ def recv(sock, buff_size):
 		recv = sock.recv(buff_size).decode('UTF-8')
 		return recv
 	except Exception as e:
-		asyncio.create_task(DiscordWebhookSender()._log_error(f"recv error {e}.{buff_size}."))
+		asyncio.create_task(DiscordWebhookSender._log_error(f"recv error {e}.{buff_size}."))
 		return ""

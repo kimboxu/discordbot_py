@@ -20,13 +20,12 @@ async def main_loop(init: base.initVar):
     c_chzzk_live_message = chzzk_live_message(init)
     c_afreeca_live_message = afreeca_live_message(init)
     c_chzzk_video = chzzk_video(init)
-    c_cafe = getCafePostTitle(init)
 
     while True:
         try:
             if init.count % 2 == 0: await base.userDataVar(init, supabase)
 
-            cafe_tasks = [asyncio.create_task(c_cafe.start(channel_id)) for channel_id in init.cafeData["channelID"]]
+            cafe_tasks = [asyncio.create_task(getCafePostTitle(init).start(channel_id)) for channel_id in init.cafeData["channelID"]]
             
             tasks = [
                 asyncio.create_task(c_chzzk_live_message.chzzk_liveMsg()),
@@ -40,7 +39,7 @@ async def main_loop(init: base.initVar):
             base.fCount(init)
 
         except Exception as e:
-            asyncio.create_task(DiscordWebhookSender()._log_error(f"Error in main loop: {str(e)}"))
+            asyncio.create_task(DiscordWebhookSender._log_error(f"Error in main loop: {str(e)}"))
             await asyncio.sleep(1)
 
 

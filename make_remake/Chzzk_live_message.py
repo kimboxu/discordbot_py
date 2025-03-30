@@ -52,7 +52,7 @@ class chzzk_live_message():
 						await self._handle_offline_status(chzzkID, title, offState)
 
 		except Exception as e:
-			asyncio.create_task(DiscordWebhookSender()._log_error(f"testerror get stateData chzzk live{e}.{chzzkID}.{str(offState)}"))
+			asyncio.create_task(DiscordWebhookSender._log_error(f"testerror get stateData chzzk live{e}.{chzzkID}.{str(offState)}"))
 			self.chat_json[self.data.chzzkID] = True
 
 	def _should_process_online_status(self, live, title, chzzkID, offState):
@@ -116,7 +116,7 @@ class chzzk_live_message():
 				asyncio.create_task(DiscordWebhookSender().send_messages(list_of_urls))
 				# asyncio.create_task(base.async_post_message(list_of_urls))
 		except Exception as e:
-			asyncio.create_task(DiscordWebhookSender()._log_error(f"postLiveMSG {e}"))
+			asyncio.create_task(DiscordWebhookSender._log_error(f"postLiveMSG {e}"))
 			self.data.livePostList.clear()
 	
 	def getChzzkDataList(self):
@@ -309,7 +309,7 @@ class chzzk_live_message():
 				return thumbnail[frontIndex:thumbnail.index(".png") + 4]
 			return None
 		except Exception as e:
-			asyncio.create_task(DiscordWebhookSender()._log_error(f"{datetime.now()} wait make thumbnail2 {e}"))
+			asyncio.create_task(DiscordWebhookSender._log_error(f"{datetime.now()} wait make thumbnail2 {e}"))
 			return None
 
 

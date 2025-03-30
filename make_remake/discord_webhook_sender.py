@@ -1,5 +1,5 @@
 import asyncio
-import os
+from os import environ
 from datetime import datetime
 from typing import List, Tuple, Optional, Dict, Any
 
@@ -8,9 +8,9 @@ from supabase import create_client
 
 class DiscordWebhookSender:
     def __init__(self, 
-                 supabase_url: str = os.environ.get('supabase_url'),
-                 supabase_key: str = os.environ.get('supabase_key'),
-                 error_webhook_url: str = os.environ.get('errorPostBotURL')):
+                 supabase_url: str = environ.get('supabase_url'),
+                 supabase_key: str = environ.get('supabase_key'),
+                 error_webhook_url: str = environ.get('errorPostBotURL')):
 
         self.supabase_url = supabase_url
         self.supabase_key = supabase_key
@@ -121,7 +121,7 @@ class DiscordWebhookSender:
         except Exception as e:
             await self._log_error(f"Error deleting user state data: {e}")
 
-    async def _log_error(message: str, webhook_url = os.environ.get('errorPostBotURL')):
+    async def _log_error(message: str, webhook_url = environ.get('errorPostBotURL')):
 
         try:
             async with ClientSession() as session:
@@ -157,15 +157,15 @@ def get_chat_list_of_urls(DO_TEST, userStateData, name, chat, thumbnail_url, cha
             
         return result_urls
     except Exception as e:
-        asyncio.create_task(DiscordWebhookSender()._log_error(f"Error in get_chat_list_of_urls: {type(e).__name__}: {str(e)}"))
+        asyncio.create_task(DiscordWebhookSender._log_error(f"Error in get_chat_list_of_urls: {type(e).__name__}: {str(e)}"))
         return result_urls
     
 def get_cafe_list_of_urls(DO_TEST, userStateData, channelID, json_data, writerNickname):
     result_urls = []
     try:
         if DO_TEST:
-            # return [(environ['errorPostBotURL'], json_data)]
-            return result_urls
+            return [(environ['errorPostBotURL'], json_data)]
+            # return result_urls
         
 
         for discordWebhookURL in userStateData['discordURL']:
@@ -179,5 +179,5 @@ def get_cafe_list_of_urls(DO_TEST, userStateData, channelID, json_data, writerNi
                 
         return result_urls
     except Exception as e:
-        asyncio.create_task(DiscordWebhookSender()._log_error(f"Error in get_cafe_list_of_urls: {type(e).__name__}: {str(e)}"))
+        asyncio.create_task(DiscordWebhookSender._log_error(f"Error in get_cafe_list_of_urls: {type(e).__name__}: {str(e)}"))
         return result_urls

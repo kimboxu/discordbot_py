@@ -64,7 +64,7 @@ class getYoutubeJsonData:
 			
 		except Exception as e:
 			if "RetryError" not in str(e):
-				asyncio.create_task(DiscordWebhookSender()._log_error(f"fYoutube {youtubeChannelID}: {str(e)}"))
+				asyncio.create_task(DiscordWebhookSender._log_error(f"fYoutube {youtubeChannelID}: {str(e)}"))
 			
 	@retry(stop=stop_after_attempt(5), 
 		wait=wait_exponential(multiplier=1, min=2, max=5),
@@ -97,7 +97,7 @@ class getYoutubeJsonData:
 				print(f"{datetime.now()} Channel response timeout for {youtubeChannelID}")
 				return None, None, None
 			except Exception as e:
-				asyncio.create_task(DiscordWebhookSender()._log_error(f"error channel_response {e}"))
+				asyncio.create_task(DiscordWebhookSender._log_error(f"error channel_response {e}"))
 				return None, None, None
 
 			# 응답이 없거나 items가 비어있는 경우 처리
@@ -132,16 +132,16 @@ class getYoutubeJsonData:
 					if video_count - current_count < 3:
 						current_count -= 1
 						await self._update_video_count(init, youtubeVideo, youtubeChannelID, current_count)
-					# asyncio.create_task(DiscordWebhookSender()._log_error(f"down video count {youtubeChannelID} {init.youtubeData.loc[youtubeChannelID, 'videoCount'] + 1} - {video_count}"))
+					# asyncio.create_task(DiscordWebhookSender._log_error(f"down video count {youtubeChannelID} {init.youtubeData.loc[youtubeChannelID, 'videoCount'] + 1} - {video_count}"))
 				return None, None, None
 			except asyncio.TimeoutError:
 				raise
 			except Exception as e:
-				asyncio.create_task(DiscordWebhookSender()._log_error(f"ifYoutubeJson3: {youtubeChannelID}.{str(e)}"))
+				asyncio.create_task(DiscordWebhookSender._log_error(f"ifYoutubeJson3: {youtubeChannelID}.{str(e)}"))
 				return None, None, None
 				
 		except Exception as e:
-			asyncio.create_task(DiscordWebhookSender()._log_error(f"ifYoutubeJson3: {youtubeChannelID}.{str(e)}"))
+			asyncio.create_task(DiscordWebhookSender._log_error(f"ifYoutubeJson3: {youtubeChannelID}.{str(e)}"))
 			return None, None, None
 				
 	async def _update_video_count(self, init: initVar, youtubeVideo: youtubeVideoData, youtubeChannelID: str, count: int):
@@ -275,7 +275,7 @@ class getYoutubeJsonData:
 			return subjectReplace(description.split('\n')[0])
 			
 		except Exception as e:
-			asyncio.create_task(DiscordWebhookSender()._log_error(f"error youtube getDescription {e}"))
+			asyncio.create_task(DiscordWebhookSender._log_error(f"error youtube getDescription {e}"))
 			return ""
 		
 	def getYoutubeJson(self, init: initVar, youtubeChannelID: str, video) -> dict:
@@ -300,7 +300,7 @@ class getYoutubeJsonData:
 				continue
 				
 		if username is None or avatar_url is None:
-			asyncio.create_task(DiscordWebhookSender()._log_error(f"Channel information not found for channelID: {channelID}"))
+			asyncio.create_task(DiscordWebhookSender._log_error(f"Channel information not found for channelID: {channelID}"))
 			return
 		
 		youtube_data = init.youtubeData.loc[youtubeChannelID]
@@ -340,7 +340,7 @@ class getYoutubeJsonData:
 				supabase = create_client(environ['supabase_url'], environ['supabase_key'])
 				supabase.table('youtubeData').upsert(data).execute()
 			except Exception as e:
-				asyncio.create_task(DiscordWebhookSender()._log_error(f"error saving youtube data {e}"))
+				asyncio.create_task(DiscordWebhookSender._log_error(f"error saving youtube data {e}"))
 		
 	def ifYoutubeAlarm(self, init: initVar, discordWebhookURL, youtubeChannelID: str) -> bool:
 		return (init.userStateData["유튜브 알림"][discordWebhookURL] and 

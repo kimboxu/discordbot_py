@@ -53,7 +53,7 @@ class afreeca_live_message():
 						await self._handle_offline_status(user_id, title, thumbnail_url)
 
 		except Exception as e:
-			asyncio.create_task(DiscordWebhookSender()._log_error(f"error get stateData afreeca live .{user_id}.{e}.{offState}"))
+			asyncio.create_task(DiscordWebhookSender._log_error(f"error get stateData afreeca live .{user_id}.{e}.{offState}"))
 			if  -1 not in [str(offState).find("Error"), str(offState).find("error")]:
 				len(1)
 
@@ -123,7 +123,7 @@ class afreeca_live_message():
 				asyncio.create_task(DiscordWebhookSender().send_messages(list_of_urls))
 				# asyncio.create_task(base.async_post_message(list_of_urls))
 		except Exception as e:
-			asyncio.create_task(DiscordWebhookSender()._log_error(f"postLiveMSG {e}"))
+			asyncio.create_task(DiscordWebhookSender._log_error(f"postLiveMSG {e}"))
 			self.data.livePostList.clear()
 
 	def getAfreecaDataList(self):
@@ -222,12 +222,12 @@ class afreeca_live_message():
 						continue
 					break
 				except Exception as e:
-					asyncio.create_task(DiscordWebhookSender()._log_error(f"{datetime.now()} wait make thumbnail 2 {e}.{str(thumbnailLink)}"))
+					asyncio.create_task(DiscordWebhookSender._log_error(f"{datetime.now()} wait make thumbnail 2 {e}.{str(thumbnailLink)}"))
 					if count % 20 == 0: offState = loads(get(afreeca_getLink(self.afreecaIDList.loc[user_id, "afreecaID"]), headers=base.getChzzkHeaders(), timeout=3).text)
 					await asyncio.sleep(0.05)
 
 			except Exception as e: 
-				asyncio.create_task(DiscordWebhookSender()._log_error(f"error getJsonVars {user_id}.{e}"))
+				asyncio.create_task(DiscordWebhookSender._log_error(f"error getJsonVars {user_id}.{e}"))
 				await asyncio.sleep(0.05)
 
 		else: thumbnail = ""
@@ -338,7 +338,7 @@ def afreeca_getChannelStateData(bno, bid):
 		response = post(f'{url}?bjid={bid}', data=data)
 		res = response.json()
 	except Exception as e:
-		asyncio.create_task(DiscordWebhookSender()._log_error(f"error get player live {str(e)}"))
+		asyncio.create_task(DiscordWebhookSender._log_error(f"error get player live {str(e)}"))
 		return None, None, None, None, None, None, None, None
 	live = res["CHANNEL"]["RESULT"]
 	title = res["CHANNEL"]["TITLE"]
@@ -350,7 +350,7 @@ def afreeca_getChannelStateData(bno, bid):
 	if live:
 		try: int(res['CHANNEL']['BNO'])
 		except: 
-			asyncio.create_task(DiscordWebhookSender()._log_error(f"error res['CHANNEL']['BNO'] None"))
+			asyncio.create_task(DiscordWebhookSender._log_error(f"error res['CHANNEL']['BNO'] None"))
 
 		thumbnail_url = f"https://liveimg.afreecatv.com/m/{res['CHANNEL']['BNO']}"
 
