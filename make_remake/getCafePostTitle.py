@@ -115,8 +115,9 @@ class getCafePostTitle:
         Args:
             article: 게시글 데이터
         """
+        cafeID = self.cafeData.loc[self.channelID, 'cafeID']
         cafe_post = CafePostData(
-            cafe_link=f"https://cafe.naver.com/{self.channelID}/{article['refArticleId']}",
+            cafe_link=f"https://cafe.naver.com/{cafeID}/{article['refArticleId']}",
             menu_id=article["menuId"],
             menu_name=article["menuName"],
             subject=article["subject"],
