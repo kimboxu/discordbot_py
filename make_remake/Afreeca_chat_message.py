@@ -43,7 +43,7 @@ class AfreecaChat:
         self.ESC = "\x1b\t"
         self.PING_PACKET = f'{self.ESC}000000000100{self.F}'
         channel_name = self.afreecaIDList.loc[afreeca_id, 'channelName']
-        self.data = afreecaChatData(afreecaID = afreeca_id, channel_name = channel_name)
+        self.data = afreecaChatData(channel_id = afreeca_id, channel_name = channel_name)
         self.chat_event = asyncio.Event()
         self.tasks = []
         # self.stream_end_time = {}  # 각 스트리머의 방송 종료 시간을 저장할 딕셔너리
