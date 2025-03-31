@@ -305,6 +305,7 @@ class chzzk_chat_message:
     async def connect(self, first_connectTF = 0):
         
         self.data.chzzk_chat_count = 80000
+        self.data.last_chat_time = datetime.now()
         self.data.accessToken, self.data.extraToken = chzzk_api.fetch_accessToken(self.data.cid, getChzzkCookie())
         
         await self.data.sock.send(dumps(self._CHZZK_CHAT_DICT("connect")))

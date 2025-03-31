@@ -115,6 +115,7 @@ class AfreecaChat:
                     await DiscordWebhookSender._log_error(f"Error cancelling task for {self.data.afreecaID}: {cancel_error}")
 
     async def connect(self):
+            self.data.last_chat_time = datetime.now()
             CONNECT_PACKET = f'{self.ESC}000100000600{self.F*3}16{self.F}'
             JOIN_PACKET = f'{self.ESC}0002{self.calculate_byte_size(self.CHATNO):06}00{self.F}{self.CHATNO}{self.F*5}'
             
