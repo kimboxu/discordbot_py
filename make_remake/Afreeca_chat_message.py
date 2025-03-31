@@ -19,7 +19,8 @@ class afreecaChatData:
     afreeca_chat_msg_List: list = field(default_factory=list)  
     processed_messages: list = field(default_factory=list)
     last_chat_time: datetime = field(default_factory=datetime.now)
-    afreecaID: str = ""
+    channel_id: str = ""
+    channel_name: str = ""
     BNO: str = ""
     BID: str = ""
 
@@ -41,7 +42,8 @@ class AfreecaChat:
         self.F = "\x0c"
         self.ESC = "\x1b\t"
         self.PING_PACKET = f'{self.ESC}000000000100{self.F}'
-        self.data = afreecaChatData(afreecaID = afreeca_id)
+        channel_name = self.afreecaIDList.loc[afreeca_id, 'channelName']
+        self.data = afreecaChatData(afreecaID = afreeca_id, channel_name = channel_name)
         self.chat_event = asyncio.Event()
         self.tasks = []
         # self.stream_end_time = {}  # 각 스트리머의 방송 종료 시간을 저장할 딕셔너리
@@ -56,15 +58,15 @@ class AfreecaChat:
     
     async def start(self):
         while True:
-            if self.chat_json[self.data.afreecaID]: 
+            if self.chat_json[self.data.channel_id]: 
                 self._change_afreeca_chat_json(False)
 
-            if self.afreeca_titleData.loc[self.data.afreecaID,'live_state'] == "CLOSE" or self.check_is_passwordDict():
+            if self.afreeca_titleData.loc[self.data.channel_id,'live_state'] == "CLOSE" or self.check_is_passwordDict():
                 await asyncio.sleep(5)
                 continue
 
-            self.data.BNO = self.afreeca_titleData.loc[self.data.afreecaID, 'chatChannelId']
-            self.data.BID = self.afreecaIDList["afreecaID"][self.data.afreecaID]
+            self.data.BNO = self.afreeca_titleData.loc[self.data.channel_id, 'chatChannelId']
+            self.data.BID = self.afreecaIDList["afreecaID"][self.data.channel_id]
 
             channel_data = afreeca_getChannelStateData(self.data.BNO, self.data.BID)
             if_adult_channel, TITLE, thumbnail_url, self.CHDOMAIN, self.CHATNO, FTK, BJID, self.CHPT = channel_data
@@ -86,7 +88,7 @@ class AfreecaChat:
                 await self._cleanup_tasks()
 
     async def _connect_and_run(self):   
-        self.data.BID = self.afreecaIDList['afreecaID'][self.data.afreecaID]
+        self.data.BID = self.afreecaIDList['afreecaID'][self.data.channel_id]
         async with websockets.connect(f"wss://{self.CHDOMAIN}:{self.CHPT}/Websocket/{self.data.BID}",
                                 subprotocols=['chat'],
                                 ssl=self.ssl_context,
@@ -112,7 +114,7 @@ class AfreecaChat:
                     # Optionally wait for task to actually cancel
                     await asyncio.wait([task], timeout=2)
                 except Exception as cancel_error:
-                    await DiscordWebhookSender._log_error(f"Error cancelling task for {self.data.afreecaID}: {cancel_error}")
+                    await DiscordWebhookSender._log_error(f"Error cancelling task for {self.data.channel_id}: {cancel_error}")
 
     async def connect(self):
             self.data.last_chat_time = datetime.now()
@@ -121,8 +123,8 @@ class AfreecaChat:
             
             await self.data.sock.send(CONNECT_PACKET)
 
-            chatChannelId = self.afreeca_titleData.loc[self.data.afreecaID, 'chatChannelId']
-            asyncio.create_task(DiscordWebhookSender._log_error(f"{self.data.afreecaID} 연결 완료 {chatChannelId}", webhook_url=environ['chat_post_url']))
+            chatChannelId = self.afreeca_titleData.loc[self.data.channel_id, 'chatChannelId']
+            asyncio.create_task(DiscordWebhookSender._log_error(f"{self.data.channel_id} 연결 완료 {chatChannelId}", webhook_url=environ['chat_post_url']))
 
             await asyncio.sleep(2)
             await self.data.sock.send(JOIN_PACKET)
@@ -146,17 +148,17 @@ class AfreecaChat:
         except Exception as e:
             await DiscordWebhookSender._log_error(f"Error in ping function: {e}")
         
-        print(f"{self.data.afreecaID} chat pong 종료")
+        print(f"{self.data.channel_id} chat pong 종료")
     
     async def _receive_messages(self, message_queue: asyncio.Queue):
         while True:
             try:
-                if base.if_last_chat(self.data.last_chat_time) or self.chat_json[self.data.afreecaID]:
+                if base.if_last_chat(self.data.last_chat_time) or self.chat_json[self.data.channel_id]:
                     try: await self.data.sock.close()
                     except: pass
 
                 if self.data.sock.closed:
-                    asyncio.create_task(DiscordWebhookSender._log_error(f"{self.data.afreecaID}: 연결 종료", webhook_url=environ['chat_post_url']))
+                    asyncio.create_task(DiscordWebhookSender._log_error(f"{self.data.channel_id}: 연결 종료", webhook_url=environ['chat_post_url']))
                     break
 
                 raw_message = await asyncio.wait_for(self.data.sock.recv(), timeout=1)
@@ -166,10 +168,10 @@ class AfreecaChat:
             except asyncio.TimeoutError:
                 continue
             except websockets.exceptions.ConnectionClosed:
-                asyncio.create_task(DiscordWebhookSender._log_error(f"{self.data.afreecaID}: 연결 비정상 종료"), webhook_url=environ['chat_post_url'])
+                asyncio.create_task(DiscordWebhookSender._log_error(f"{self.data.channel_id}: 연결 비정상 종료"), webhook_url=environ['chat_post_url'])
                 break
             except Exception as e: 
-                asyncio.create_task(DiscordWebhookSender._log_error(f"{self.data.afreecaID} afreeca chat test except {e}"))
+                asyncio.create_task(DiscordWebhookSender._log_error(f"{self.data.channel_id} afreeca chat test except {e}"))
                 break
 
     async def _decode_message(self, message_queue: asyncio.Queue):
@@ -203,9 +205,8 @@ class AfreecaChat:
                 await self.data.chat_event.wait()
 
                 name, chat, thumbnail_url = self.data.afreeca_chat_msg_List.pop(0)
-                channel_name = self.afreecaIDList.loc[self.data.afreecaID, 'channelName']
                 
-                list_of_urls = get_chat_list_of_urls(self.DO_TEST, self.userStateData, name, chat, thumbnail_url, channel_name)
+                list_of_urls = get_chat_list_of_urls(self.DO_TEST, self.userStateData, name, chat, thumbnail_url, self.data.channel_id, self.data.channel_name)
                 asyncio.create_task(DiscordWebhookSender().send_messages(list_of_urls))
             
                 print(f"{datetime.now()} post chat")
@@ -220,7 +221,7 @@ class AfreecaChat:
         return len(string.encode('utf-8')) + 6
 
     def _change_afreeca_chat_json(self, afreeca_chat_rejoin = True):
-        self.chat_json[self.data.afreecaID] = afreeca_chat_rejoin
+        self.chat_json[self.data.channel_id] = afreeca_chat_rejoin
         supabase = create_client(environ['supabase_url'], environ['supabase_key'])
         supabase.table('date_update').upsert({"idx": 0, "chat_json": self.chat_json}).execute()
 
@@ -251,7 +252,7 @@ class AfreecaChat:
         self.data.chat_event.set()
     
         # 로그 출력
-        afreecaName = self.afreecaIDList.loc[self.data.afreecaID, 'channelName']
+        afreecaName = self.afreecaIDList.loc[self.data.channel_id, 'channelName']
         print(f"{datetime.now()} [채팅 - {afreecaName}] {nickname}: {chat}")
 
     def _is_invalid_message(self, messages):
@@ -301,7 +302,7 @@ class AfreecaChat:
         return 1
 
     def check_is_passwordDict(self):
-        stateData = loads(get(afreeca_getLink(self.afreecaIDList["afreecaID"][self.data.afreecaID]), headers=base.getChzzkHeaders(), timeout=3).text)
+        stateData = loads(get(afreeca_getLink(self.afreecaIDList["afreecaID"][self.data.channel_id]), headers=base.getChzzkHeaders(), timeout=3).text)
         return stateData['broad'].get('is_password',{False})
 
 # async def main():

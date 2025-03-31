@@ -134,7 +134,7 @@ class DiscordWebhookSender:
         except Exception as e:
             print(f"Failed to log error to webhook: {e}")
 
-def get_chat_list_of_urls(DO_TEST, userStateData, name, chat, thumbnail_url, channel_name):
+def get_chat_list_of_urls(DO_TEST, userStateData, name, chat, thumbnail_url, channel_id, channel_name):
     result_urls = []
     try:
         def make_thumbnail_url():
@@ -149,7 +149,7 @@ def get_chat_list_of_urls(DO_TEST, userStateData, name, chat, thumbnail_url, cha
         for discordWebhookURL in userStateData['discordURL']:
             try:
                 if (userStateData.loc[discordWebhookURL, "chat_user_json"] and 
-                    name in userStateData.loc[discordWebhookURL, "chat_user_json"].get(channel_name, [])):
+                    name in userStateData.loc[discordWebhookURL, "chat_user_json"].get(channel_id, [])):
                     result_urls.append((discordWebhookURL, make_thumbnail_url()))
             except (KeyError, AttributeError):
                 # 특정 URL 처리 중 오류가 발생해도 다른 URL 처리는 계속 진행
