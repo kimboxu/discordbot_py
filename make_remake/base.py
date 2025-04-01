@@ -514,7 +514,7 @@ async def get_message(platform, link):
 				error_type = type(e).__name__
 				error_msg = f"API 요청 타임아웃/연결 오류 (시도 {retry_count}/{max_retries}): {platform} - {error_type}: {str(e)}"
 				if retry_count >= max_retries: asyncio.create_task(DiscordWebhookSender._log_error(error_msg))
-				else: print(error_msg)
+				# else: print(error_msg)
 				
 				if retry_count < max_retries:
 					await asyncio.sleep(retry_delay)
@@ -527,7 +527,7 @@ async def get_message(platform, link):
 				retry_count += 1
 				error_msg = f"SSL Error (시도 {retry_count}/{max_retries}): {platform} - {str(ssl_err)}"
 				if retry_count >= max_retries: asyncio.create_task(DiscordWebhookSender._log_error(error_msg))
-				else: print(error_msg)
+				# else: print(error_msg)
 				
 				if retry_count < max_retries:
 					if 'requests_kwargs' in locals() and 'verify' in request_kwargs:

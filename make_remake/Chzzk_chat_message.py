@@ -66,7 +66,8 @@ class chzzk_chat_message:
             self.data.sock = sock
             self.data.cid = self.chzzk_titleData.loc[self.data.channel_id, 'chatChannelId']
             
-            await self.connect(self.if_chzzk_Join())
+            self.get_check_channel_id()
+            await self.connect()
             message_queue = asyncio.Queue()
 
             self.tasks = [
@@ -94,7 +95,7 @@ class chzzk_chat_message:
 
             # 논블로킹 방식으로 메시지 수신 시도
             try:
-                if self.if_chzzk_Join():
+                if if_last_chat(self.data.last_chat_time) or self.chat_json[self.data.channel_id]:
                     try: await self.data.sock.close()
                     except: pass
 
@@ -303,7 +304,6 @@ class chzzk_chat_message:
     async def connect(self, first_connectTF = 0):
         
         self.data.chzzk_chat_count = 80000
-        self.data.last_chat_time = datetime.now()
         self.data.accessToken, self.data.extraToken = chzzk_api.fetch_accessToken(self.data.cid, getChzzkCookie())
         
         await self.data.sock.send(dumps(self._CHZZK_CHAT_DICT("connect")))
@@ -312,6 +312,9 @@ class chzzk_chat_message:
 
         await self.data.sock.send(dumps(self._CHZZK_CHAT_DICT("recentMessageCount", num = 50)))
         sock_response = loads(await self.data.sock.recv())
+
+        messageTime = sock_response["bdy"]["messageList"][-1]["messageTime"]
+        self.data.last_chat_time = datetime.fromtimestamp(messageTime/1000)
 
         asyncio.create_task(DiscordWebhookSender._log_error(f"{self.data.channel_id} 연결 완료 {self.data.cid}", webhook_url=environ['chat_post_url']))
 
@@ -395,23 +398,17 @@ class chzzk_chat_message:
 
         return profile_image
     
-    def if_chzzk_Join(self) -> int:
+    def get_check_channel_id(self) -> int:
         try:
+
+            self.data.cid = chzzk_api.fetch_chatChannelId(self.chzzkIDList.loc[self.data.channel_id, "channel_code"])
+            if self.data.cid != self.chzzk_titleData.loc[self.data.channel_id, 'chatChannelId']:
+                self.change_chatChannelId()
+            return True
             
-            #방송을 방금 켰는지 or 마지막으로 읽어온 채팅이 일정 시간이 넘었을 경우
-            if not if_after_time(self.chzzk_titleData.loc[self.data.channel_id,'update_time']) or if_last_chat(self.data.last_chat_time):
-            
-                #채팅 방 코드가 달라졌는지 확인 후 연결
-                self.data.cid = chzzk_api.fetch_chatChannelId(self.chzzkIDList.loc[self.data.channel_id, "channel_code"])
-                if self.data.cid != self.chzzk_titleData.loc[self.data.channel_id, 'chatChannelId']:
-                    self.change_chatChannelId()
-                return 2
-            
-            if self.data.chzzk_chat_count == 0 or self.chat_json[self.data.channel_id] :
-                return 1
-            
-        except Exception as e: asyncio.create_task(DiscordWebhookSender._log_error(f"error if_chzzk_Join {self.data.channel_id}.{e}"))
-        return 0
+        except Exception as e: 
+            asyncio.create_task(DiscordWebhookSender._log_error(f"error get_check_channel_id {self.data.channel_id}.{e}"))
+        return False
 
     def change_chatChannelId(self):
         idx = {chzzk: i for i, chzzk in enumerate(self.chzzk_titleData["channelID"])}
@@ -429,7 +426,7 @@ class chzzk_chat_message:
         self.supabase.table('chzzk_titleData').upsert(supabase_data).execute()
         
     async def sendHi(self, himent):
-        if self.if_chzzk_Join() == 2:
+        if self.get_check_channel_id():
             asyncio.create_task(DiscordWebhookSender._log_error(f"send hi {self.chzzkIDList.loc[self.data.channel_id, 'channelName']} {self.data.cid}"))
             self._send(himent)
 

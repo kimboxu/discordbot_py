@@ -187,10 +187,10 @@ class AfreecaChat:
 
             user_id = user_id.split("(")[0]
 
-            if nickname not in [*self.afreeca_chatFilter["channelName"]] or user_id not in [*self.afreeca_chatFilter["channelID"]]: 
+            if user_id not in [*self.afreeca_chatFilter["channelID"]]: 
                 continue
             
-            user_nick, profile_image = self._get_user_info(user_id)
+            user_nick, profile_image = await self._get_user_info(user_id)
             if nickname != user_nick:
                 continue
                 
@@ -219,9 +219,9 @@ class AfreecaChat:
     def calculate_byte_size(string):
         return len(string.encode('utf-8')) + 6
 
-    def _get_user_info(self, user_id):
+    async def _get_user_info(self, user_id):
         #유저 정보 가져오기
-        stateData = base.get_message("afreeca", base.afreeca_getLink(user_id))
+        stateData = await base.get_message("afreeca", base.afreeca_getLink(user_id))
         user_nick = stateData['station']['user_nick']
         _, _, profile_image = base.afreeca_getChannelOffStateData(stateData, stateData["station"]["user_id"])
         return user_nick, profile_image
@@ -246,8 +246,7 @@ class AfreecaChat:
         self.data.chat_event.set()
     
         # 로그 출력
-        afreecaName = self.afreecaIDList.loc[self.data.channel_id, 'channelName']
-        print(f"{datetime.now()} [채팅 - {afreecaName}] {nickname}: {chat}")
+        print(f"{datetime.now()} [채팅 - {self.data.channel_name}] {nickname}: {chat}")
 
     def _is_invalid_message(self, messages):
         #메시지가 유효하지 않은지 확인
