@@ -193,7 +193,7 @@ class afreeca_chat_message:
             self._process_new_message(nickname, chat, profile_image)
 
     async def _post_chat(self): #send to chatting message
-        while not self.data.sock.closed and self.data.afreeca_chat_msg_List:
+        while not self.data.sock.closed:
             try:
                 await self.data.chat_event.wait()
 

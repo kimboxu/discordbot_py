@@ -115,90 +115,7 @@ class chzzk_chat_message:
                 print(f"{datetime.now()} Error details: {type(e)}, {e}")
                 asyncio.create_task(DiscordWebhookSender._log_error(f"Detailed error in message_receiver: {type(e)}, {e}"))
 
-    async def _message_processor(self, message_queue: asyncio.Queue):
-        def filter_message():
-            for chat_data in chzzk_chat_list:
-                nickname = get_nickname(chat_data)
-                try:
-                    if nickname is None:
-                        continue
-                    if not self.init.DO_TEST and (chat_type == "후원" or nickname in [*self.init.chzzk_chatFilter["channelName"]]):
-                        asyncio.create_task(print_msg(chat_data, nickname))
-
-                    if not(nickname in [*self.init.chzzk_chatFilter["channelName"]]):
-                        asyncio.create_task(print_msg(chat_data, nickname, post_msg_TF=False))
-
-                    if nickname not in [*self.init.chzzk_chatFilter["channelName"]]: #chzzk_chatFilter에 없는 사람 채팅은 제거
-                        return
-
-                    if 'msg' in chat_data:
-                        msg = chat_data['msg']
-                    elif 'content' in chat_data:
-                        msg = chat_data['content']
-                    else:
-                        continue  # 메시지가 없으면 다음 chat_data로 넘어갑니다.
-
-                    if msg and msg[0] in [">"]:
-                        msg = "/" + msg
-                    self.data.chzzk_chat_msg_List.append([nickname, msg, chat_type, chat_data.get('uid') or chat_data.get('userId')])
-
-                except Exception as e:
-                    asyncio.create_task(DiscordWebhookSender._log_error(f"error process_message {e}"))
-
-            if self.data.chzzk_chat_msg_List:
-                self.data.chat_event.set()
-                    
-        def get_nickname(chat_data):
-            if chat_data['extras'] is None or loads(chat_data['extras']).get('styleType', {}) in [1, 2, 3]:
-                return None
-                
-            # Handle anonymous users
-            user_id = chat_data.get('uid', chat_data.get('userId'))
-            if user_id == 'anonymous':
-                return '익명의 후원자'
-            
-            # Parse and validate profile data
-            try:
-                if '%7D' in chat_data['profile']: chat_data['profile'] = unquote(chat_data['profile'])
-                profile_data = loads(chat_data['profile'])
-                if isinstance(profile_data, dict) and 'nickname' in profile_data:
-                    return profile_data['nickname']
-            except:
-                pass
-            
-            return '(알 수 없음)'
-        
-        async def print_msg(chat_data, nickname, post_msg_TF=True):
-            # chzzkName = self.init.chzzkIDList.loc[self.data.channel_id, 'channelName']
-            def format_message(msg_type, nickname, message, time, **kwargs):
-                base = f"[{chat_type} - {self.data.channel_name}] {nickname}"
-                time = datetime.fromtimestamp(time/1000)
-                if msg_type == 'donation':
-                    return f"{base} ({kwargs.get('amount')}치즈): {message}, {time}"
-                return f"{base}: {message}, {time}"
-            
-            try:
-                if chat_type == "후원":
-                    extras = loads(chat_data['extras'])
-                    if 'payAmount' in extras:
-                        message = format_message('donation', nickname, chat_data['msg'], chat_data['msgTime'], amount=extras['payAmount'])
-                    else:
-                        return  # 도네이션 금액이 없는 경우 처리하지 않음
-
-                else:
-                    msg = chat_data['msg'] if chat_type == "채팅" else chat_data['content']
-                    time = chat_data['msgTime'] if chat_type == "채팅" else chat_data['messageTime']
-                    message = format_message('chat', nickname, msg, time)
-                    
-                if post_msg_TF:
-                    asyncio.create_task(DiscordWebhookSender._log_error(message, webhook_url=environ['donation_post_url']))
-                else:
-                    print(f"{datetime.now()} {message}")
-
-            except Exception as e:
-                if chat_type == "후원":
-                    asyncio.create_task(DiscordWebhookSender._log_error(f"{datetime.now()} it is test {e}.{loads(chat_data['extras'])}"))
-
+    async def _message_processor(self, message_queue: asyncio.Queue):            
         while True:
             try:
                 # 큐에서 메시지 가져오기
@@ -207,41 +124,19 @@ class chzzk_chat_message:
                 try:
                     chat_cmd = raw_message['cmd']
 
-                    if chat_cmd == CHZZK_CHAT_CMD['ping']: 
-                        await self.data.sock.send(dumps(self._CHZZK_CHAT_DICT("pong")))
-                        continue
-
                     # 채팅 타입 결정
-                    chat_type = {
-                        CHZZK_CHAT_CMD['chat']: '채팅',
-                        CHZZK_CHAT_CMD['request_chat']: '채팅',
-                        CHZZK_CHAT_CMD['donation']: '후원'
-                    }.get(chat_cmd, '모름')
+                    chat_type = self.get_chat_type(chat_cmd)
 
-                    # 에러 체크
-                    if chat_type != "후원" and raw_message['tid'] is None:
-                        bdy = raw_message.get('bdy', {})
-                        if message := bdy.get('message'):
-                            asyncio.create_task(DiscordWebhookSender._log_error(f"message_processor200len.{str(message)[:200]}"))
-                        continue
-
-                    # 임시 제한 처리
-                    bdy = raw_message.get('bdy', {})
-                    if isinstance(bdy, dict) and bdy.get('type') == 'TEMPORARY_RESTRICT':
-                        duration = bdy.get('duration', 30)
-                        asyncio.create_task(DiscordWebhookSender._log_error(f"{datetime.now()} 임시 제한 상태입니다. {duration}초 동안 대기합니다."))
-                        await asyncio.sleep(duration)
+                    if not await self.check_chat_message(raw_message, chat_type):
                         continue
                     
-                    # 메시지 리스트 처리
-                    if isinstance(bdy, dict) and 'messageList' in bdy:
-                        chat_data = bdy['messageList']
-                        chzzk_chat_list = [msg for msg in chat_data]
-                    else:
-                        chat_data = bdy if isinstance(bdy, list) else [bdy]
-                        chzzk_chat_list = [msg for msg in chat_data]
+                    if bdy := await self.check_TEMPORARY_RESTRICT(raw_message):
+                        continue
+                    
+                    chzzk_chat_list = self.get_chzzk_chat_list(bdy)
 
-                    if chzzk_chat_list: filter_message()
+                    if chzzk_chat_list: 
+                        self.filter_message(chzzk_chat_list, chat_type)
             
                 except Exception as e:
                     asyncio.create_task(DiscordWebhookSender._log_error(f"Error processing message: {e}, {str(raw_message)}"))
@@ -253,19 +148,91 @@ class chzzk_chat_message:
                 print(f"{datetime.now()} Error in message_processor: {e}")
                 asyncio.create_task(DiscordWebhookSender._log_error(f"Error in message_processor: {e}"))
                 await asyncio.sleep(0.5)  # 예외 발생 시 잠시 대기
-         
-    async def _post_chat(self):
-        while not self.data.sock.closed and self.data.chzzk_chat_msg_List:
+
+    def get_chat_type(self, chat_cmd) -> str:
+        # 채팅 타입 결정
+        return {
+            CHZZK_CHAT_CMD['chat']: '채팅',
+            CHZZK_CHAT_CMD['request_chat']: '채팅',
+            CHZZK_CHAT_CMD['donation']: '후원',
+            CHZZK_CHAT_CMD['ping']: '핑'
+        }.get(chat_cmd, '모름')
+
+    async def check_chat_message(self, raw_message, chat_type):
+        if chat_type == "핑": 
+            await self.data.sock.send(dumps(self._CHZZK_CHAT_DICT("pong")))
+            return False
+        
+        # 에러 체크
+        if chat_type != "후원" and raw_message['tid'] is None:
+            bdy = raw_message.get('bdy', {})
+            if message := bdy.get('message'):
+                asyncio.create_task(DiscordWebhookSender._log_error(f"message_processor200len.{str(message)[:200]}"))
+            return False
+
+        return True
+    
+    async def check_TEMPORARY_RESTRICT(self, raw_message):
+        # 임시 제한 처리
+        bdy = raw_message.get('bdy', {})
+        if isinstance(bdy, dict) and bdy.get('type') == 'TEMPORARY_RESTRICT':
+            duration = bdy.get('duration', 30)
+            asyncio.create_task(DiscordWebhookSender._log_error(f"{datetime.now()} 임시 제한 상태입니다. {duration}초 동안 대기합니다."))
+            await asyncio.sleep(duration)
+            return True
+        return bdy
+
+    def get_chzzk_chat_list(self, bdy):
+        if isinstance(bdy, dict) and 'messageList' in bdy:
+            chat_data = bdy['messageList']
+            chzzk_chat_list = [msg for msg in chat_data]
+        else:
+            chat_data = bdy if isinstance(bdy, list) else [bdy]
+            chzzk_chat_list = [msg for msg in chat_data]
+        return chzzk_chat_list
+
+    def filter_message(self, chzzk_chat_list, chat_type):
+        for chat_data in chzzk_chat_list:
             try:
-                await self.data.chat_event.wait()
-                name, chat, chat_type, uid = self.data.chzzk_chat_msg_List.pop(0)
+                nickname = self.get_nickname(chat_data)
+
+                if nickname is None:
+                    continue
+
+                if not self.init.DO_TEST and (chat_type == "후원" or nickname in [*self.init.chzzk_chatFilter["channelName"]]):
+                    asyncio.create_task(DiscordWebhookSender._log_error(self.print_msg(chat_data, chat_type), webhook_url=environ['donation_post_url']))
+
+                if not(nickname in [*self.init.chzzk_chatFilter["channelName"]]):
+                    asyncio.create_task(print(f"{datetime.now()} {self.print_msg(chat_data, chat_type)}"))
+
+                if nickname not in [*self.init.chzzk_chatFilter["channelName"]]: #chzzk_chatFilter에 없는 사람 채팅은 제거
+                    return
+
+                self.data.chzzk_chat_msg_List.append([chat_data, chat_type])
+
+            except Exception as e:
+                asyncio.create_task(DiscordWebhookSender._log_error(f"error process_message {e}"))
+
+        if self.data.chzzk_chat_msg_List:
+            self.data.chat_event.set()
+
+    async def _post_chat(self):
+        while not self.data.sock.closed:
+            try:
+                if self.data.chzzk_chat_msg_List: await self.data.chat_event.wait()
+                chat_data, chat_type = self.data.chzzk_chat_msg_List.pop(0)
+
+                nickname = self.get_nickname(chat_data)
+                chat = self.get_chat(chat_data)
+                uid = self.get_uid(chat_data)
+
                 profile_image = await self._get_profile_image(uid)
-                json_data = get_json_data(name, chat, self.data.channel_name, profile_image)
+                json_data = get_json_data(nickname, chat, self.data.channel_name, profile_image)
                 
-                list_of_urls = get_list_of_urls(self.init.DO_TEST, self.init.userStateData, name, self.data.channel_id, json_data, "chat_user_json")
+                list_of_urls = get_list_of_urls(self.init.DO_TEST, self.init.userStateData, nickname, self.data.channel_id, json_data, "chat_user_json")
                 asyncio.create_task(DiscordWebhookSender().send_messages(list_of_urls))
 
-                print(f"{datetime.now()} post chat")
+                print(f"{datetime.now()} post chat {self.print_msg(chat_data, chat_type)}")
                 self.data.chat_event.clear()
                 
             except Exception as e:
@@ -406,6 +373,69 @@ class chzzk_chat_message:
             self.init.chzzk_titleData.loc[self.data.channel_id, 'oldChatChannelId'] = self.init.chzzk_titleData.loc[self.data.channel_id, 'chatChannelId']
             self.init.chzzk_titleData.loc[self.data.channel_id, 'chatChannelId'] = self.data.cid
             await save_airing_data(self.init.chzzk_titleData, 'chzzk', self.data.channel_id)
+
+    def get_nickname(chat_data):
+        if chat_data['extras'] is None or loads(chat_data['extras']).get('styleType', {}) in [1, 2, 3]:
+            return None
+            
+        # Handle anonymous users
+        user_id = chat_data.get('uid', chat_data.get('userId'))
+        if user_id == 'anonymous':
+            return '익명의 후원자'
+        
+        # Parse and validate profile data
+        try:
+            if '%7D' in chat_data['profile']: chat_data['profile'] = unquote(chat_data['profile'])
+            profile_data = loads(chat_data['profile'])
+            if isinstance(profile_data, dict) and 'nickname' in profile_data:
+                return profile_data['nickname']
+        except:
+            pass
+        
+        return '(알 수 없음)'
+
+    def get_chat(chat_data) -> str:
+        if 'msg' in chat_data:
+            msg = chat_data['msg']
+        elif 'content' in chat_data:
+            msg = chat_data['content']
+        else:
+            return None
+
+        if msg and msg[0] in [">"]:
+            msg = "/" + msg
+        return msg
+
+    def get_uid(chat_data) -> str:
+        return chat_data.get('uid') or chat_data.get('userId')
+
+    def get_payAmount(chat_data, chat_type) -> str:
+        if chat_type == "후원": payAmount = loads(chat_data['extras'])['payAmount']
+        else: payAmount = None
+        return payAmount
+
+    async def print_msg(self, chat_data, chat_type) -> str:
+
+        def format_message(self, msg_type, nickname, message, time, **kwargs):
+            base = f"[{chat_type} - {self.data.channel_name}] {nickname}"
+            time = datetime.fromtimestamp(time/1000)
+            if msg_type == 'donation':
+                return f"{base} ({kwargs.get('amount')}치즈): {message}, {time}"
+            return f"{base}: {message}, {time}"
+        
+        if chat_type == "후원":
+            extras = loads(chat_data['extras'])
+            if 'payAmount' in extras:
+                message = format_message('donation', self.get_nickname(chat_data), chat_data['msg'], chat_data['msgTime'], amount=extras['payAmount'])
+            else:
+                return  # 도네이션 금액이 없는 경우 처리하지 않음
+
+        else:
+            msg = chat_data['msg'] if chat_type == "채팅" else chat_data['content']
+            time = chat_data['msgTime'] if chat_type == "채팅" else chat_data['messageTime']
+            message = format_message('chat', self.get_nickname(chat_data), msg, time)
+
+        return message
 
     async def sendHi(self, himent):
         if await self.get_check_channel_id():
