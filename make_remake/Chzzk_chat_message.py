@@ -179,6 +179,7 @@ class chzzk_chat_message:
             # chzzkName = self.chzzkIDList.loc[self.data.channel_id, 'channelName']
             def format_message(msg_type, nickname, message, time, **kwargs):
                 base = f"[{chat_type} - {self.data.channel_name}] {nickname}"
+                time = datetime.fromtimestamp(time/1000)
                 if msg_type == 'donation':
                     return f"{base} ({kwargs.get('amount')}치즈): {message}, {time}"
                 return f"{base}: {message}, {time}"
@@ -194,8 +195,6 @@ class chzzk_chat_message:
                 else:
                     msg = chat_data['msg'] if chat_type == "채팅" else chat_data['content']
                     time = chat_data['msgTime'] if chat_type == "채팅" else chat_data['messageTime']
-                    time = datetime.fromtimestamp(time/1000)
-                    
                     message = format_message('chat', nickname, msg, time)
                     
                 if post_msg_TF:
