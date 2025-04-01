@@ -13,7 +13,7 @@ check_bot() {
 # Function to start the bot
 start_bot() {
     echo "Starting Discord bot..."
-    nohup python3 $BOT_SCRIPT > $LOG_FILE 2>&1 &
+    nohup python3 $BOT_SCRIPT >> $LOG_FILE 2>&1 &
     echo "Discord bot started with PID: $!"
 }
 
