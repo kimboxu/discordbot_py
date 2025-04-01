@@ -4,7 +4,6 @@ import asyncio
 import aiohttp
 from json import loads
 from queue import Queue
-from typing import Dict
 import pandas as pd
 from requests import post, get
 from requests.exceptions import HTTPError, ReadTimeout, ConnectTimeout, SSLError
@@ -32,20 +31,6 @@ class initVar:
 	# 모든 로거의 레벨을 높이려면 다음과 같이 할 수 있습니다:
 	# logging.getLogger().setLevel(logging.WARNING)
 	print("start!")
-	
-@dataclass
-class LiveData:
-	livePostList: list = field(default_factory=list)
-	change_title_time: str = '2025-01-01 00:00:00'
-	LiveCountStart: str = '2025-01-01 00:00:00'
-	LiveCountEnd: str = '2025-01-01 00:00:00'
-	live: str = ""
-	title: str = ""
-	profile_image: str = ""
-	start_at: Dict[str, str] = field(default_factory=lambda: {
-		"openDate": "",
-		"closeDate": ""
-	})
 
 @dataclass
 class chzzkVideoData:
@@ -641,6 +626,7 @@ async def save_airing_data(titleData, platform: str, id_):
 				"update_time": titleData.loc[id_, "update_time"],
 				"chatChannelId": titleData.loc[id_, "chatChannelId"],
 				"oldChatChannelId": titleData.loc[id_, "oldChatChannelId"],
+				"state_update_time": titleData.loc[id_, "state_update_time"],
 		}
 
 	for _ in range(3):
