@@ -45,7 +45,7 @@ class chzzk_chat_message:
     async def start(self):
         while True:
             if self.chat_json[self.data.channel_id]: 
-                change_chat_join_state(self.chat_json, self.data.channel_id, False)
+                await change_chat_join_state(self.chat_json, self.data.channel_id, False)
             
             if self.titleData.loc[self.data.channel_id, 'live_state'] == "CLOSE":
                 await asyncio.sleep(5)
@@ -55,7 +55,7 @@ class chzzk_chat_message:
                 await self._connect_and_run()
             except Exception as e:
                 await DiscordWebhookSender._log_error(f"error in chat manager: {e}")
-                change_chat_join_state(self.chat_json, self.data.channel_id)
+                await change_chat_join_state(self.chat_json, self.data.channel_id)
             finally:
                 await self._cleanup_tasks()
 

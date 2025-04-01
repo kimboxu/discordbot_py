@@ -57,7 +57,7 @@ class AfreecaChat:
     async def start(self):
         while True:
             if self.chat_json[self.data.channel_id]: 
-                base.change_chat_join_state(self.chat_json, self.data.channel_id, False)
+                await base.change_chat_join_state(self.chat_json, self.data.channel_id, False)
 
             if self.titleData.loc[self.data.channel_id,'live_state'] == "CLOSE" or await self.check_is_passwordDict():
                 await asyncio.sleep(5)
@@ -81,7 +81,7 @@ class AfreecaChat:
                 await self._connect_and_run()
             except Exception as e:
                 await DiscordWebhookSender._log_error(f"error in chat manager: {e}")
-                base.change_chat_join_state(self.chat_json, self.data.channel_id)
+                await base.change_chat_join_state(self.chat_json, self.data.channel_id)
             finally:
                 await self._cleanup_tasks()
 
