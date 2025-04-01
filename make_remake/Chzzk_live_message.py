@@ -42,7 +42,7 @@ class chzzk_live_message():
 
 		except Exception as e:
 			asyncio.create_task(DiscordWebhookSender._log_error(f"testerror get state_data chzzk live{e}.{self.channel_id}.{str(state_data)}"))
-			await base.update_flag('user_date')
+			await base.update_flag('user_date', True)
 
 	async def _get_state_data(self):
 		return await base.get_message(

@@ -53,7 +53,7 @@ class base_live_message:
         except Exception as e:
             error_msg = f"error get state_data {self.platform_name} live {e}.{self.channel_id}"
             asyncio.create_task(DiscordWebhookSender._log_error(error_msg))
-            await base.update_flag('user_date')
+            await base.update_flag('user_date', True)
 
     def _update_title_if_needed(self):
         if (base.if_after_time(self.data.change_title_time) and 

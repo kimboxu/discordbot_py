@@ -173,7 +173,7 @@ async def load_user_state_data(init: initVar):
 	init.userStateData.index = list(init.userStateData['discordURL'])
 	
 	# 플래그 업데이트
-	await update_flag(init.supabase, 'user_date', False)
+	await update_flag('user_date', False)
 
 async def update_flag(field, value):
 	# 비동기로 플래그 업데이트

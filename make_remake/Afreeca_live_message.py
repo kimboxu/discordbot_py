@@ -43,7 +43,7 @@ class afreeca_live_message():
 
 		except Exception as e:
 			asyncio.create_task(DiscordWebhookSender._log_error(f"error get state_data afreeca live .{self.channel_id}.{e}"))
-			await base.update_flag('user_date')
+			await base.update_flag('user_date', True)
 			
 	def _is_valid_state_data(self, state_data):
 		try:
