@@ -59,6 +59,7 @@ class base_live_message:
         if (base.if_after_time(self.data.change_title_time) and 
             self._get_old_title() != self._get_title()):
             self.title_data.loc[self.channel_id,'title2'] = self.title_data.loc[self.channel_id,'title1']
+            asyncio.create_task(base.save_airing_data(self.title_data, self.platform_name, self.channel_id))
 
     def _get_channel_name(self):
         return self.id_list.loc[self.channel_id, 'channelName']
