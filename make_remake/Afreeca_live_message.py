@@ -11,7 +11,6 @@ class afreeca_live_message():
 	def __init__(self, init_var: base.initVar, channel_id):
 		self.init = init_var
 		self.DO_TEST = init_var.DO_TEST
-		self.supabase = init_var.supabase
 		self.userStateData = init_var.userStateData
 		self.afreecaIDList = init_var.afreecaIDList
 		self.afreeca_titleData = init_var.afreeca_titleData
@@ -96,7 +95,7 @@ class afreeca_live_message():
 		
 		self.data.livePostList.append((message, json_data))
 		
-		await base.save_profile_data(self.afreecaIDList, 'afreeca', self.supabase)
+		await base.save_profile_data(self.afreecaIDList, 'afreeca')
 
 		if message == "뱅온!": 
 			self.data.LiveCountStart = datetime.now().isoformat()
@@ -134,7 +133,7 @@ class afreeca_live_message():
 			list_of_urls = get_list_of_urls(self.DO_TEST, self.userStateData, channel_name, self.channel_id, json_data, db_name)
 			asyncio.create_task(DiscordWebhookSender().send_messages(list_of_urls))
 
-			await base.save_airing_data(self.afreeca_titleData, 'afreeca', self.supabase)
+			await base.save_airing_data(self.afreeca_titleData, 'afreeca')
 
 		except Exception as e:
 			asyncio.create_task(DiscordWebhookSender._log_error(f"postLiveMSG {e}"))

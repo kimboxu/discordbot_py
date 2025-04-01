@@ -30,7 +30,6 @@ class afreecaChatData:
 class AfreecaChat:
     def __init__(self, init_var: base.initVar, channel_id):
         self.DO_TEST = init_var.DO_TEST
-        self.supabase = init_var.supabase
         self.userStateData = init_var.userStateData
         self.afreecaIDList = init_var.afreecaIDList
         self.afreeca_chatFilter = init_var.afreeca_chatFilter
@@ -58,7 +57,7 @@ class AfreecaChat:
     async def start(self):
         while True:
             if self.chat_json[self.data.channel_id]: 
-                self._change_afreeca_chat_json(False)
+                base.change_chat_join_state(self.chat_json, self.data.channel_id, False)
 
             if self.afreeca_titleData.loc[self.data.channel_id,'live_state'] == "CLOSE" or await self.check_is_passwordDict():
                 await asyncio.sleep(5)
@@ -82,7 +81,7 @@ class AfreecaChat:
                 await self._connect_and_run()
             except Exception as e:
                 await DiscordWebhookSender._log_error(f"error in chat manager: {e}")
-                self._change_afreeca_chat_json()
+                base.change_chat_join_state(self.chat_json, self.data.channel_id)
             finally:
                 await self._cleanup_tasks()
 
@@ -219,10 +218,6 @@ class AfreecaChat:
     @staticmethod
     def calculate_byte_size(string):
         return len(string.encode('utf-8')) + 6
-
-    def _change_afreeca_chat_json(self, afreeca_chat_rejoin = True):
-        self.chat_json[self.data.channel_id] = afreeca_chat_rejoin
-        self.supabase.table('date_update').upsert({"idx": 0, "chat_json": self.chat_json}).execute()
 
     def _get_user_info(self, user_id):
         #유저 정보 가져오기

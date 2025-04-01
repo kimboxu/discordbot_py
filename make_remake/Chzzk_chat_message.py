@@ -7,7 +7,7 @@ from urllib.parse import unquote
 from json import loads, dumps, JSONDecodeError
 from dataclasses import dataclass, field
 from cmd_type import CHZZK_CHAT_CMD
-from base import  getChzzkCookie, if_after_time, if_last_chat, initVar, get_message
+from base import  getChzzkCookie, if_after_time, if_last_chat, initVar, get_message, change_chat_join_state
 from discord_webhook_sender import DiscordWebhookSender, get_list_of_urls, get_json_data
 
 @dataclass
@@ -28,7 +28,7 @@ class ChzzkChatData:
         self.chat_event = asyncio.Event()
 
 class chzzk_chat_message:
-    def __init__(self, init_var: initVar, chzzk_id):
+    def __init__(self, init_var: initVar, channel_id):
         self.DO_TEST = init_var.DO_TEST
         self.supabase = init_var.supabase
         self.userStateData = init_var.userStateData
@@ -37,18 +37,17 @@ class chzzk_chat_message:
         self.chzzk_titleData = init_var.chzzk_titleData
         self.chat_json = init_var.chat_json
 
-        self.chzzk_id = chzzk_id
-        channel_name = self.chzzkIDList.loc[self.chzzk_id, 'channelName']
-        self.data = ChzzkChatData(channel_id=chzzk_id, channel_name = channel_name)
+        channel_name = self.chzzkIDList.loc[channel_id, 'channelName']
+        self.data = ChzzkChatData(channel_id=channel_id, channel_name = channel_name)
         self.chat_event = asyncio.Event()
         self.tasks = []
 
     async def start(self):
         while True:
-            if self.chat_json[self.chzzk_id]: 
-                self._change_chzzk_chat_json(False)
+            if self.chat_json[self.data.channel_id]: 
+                change_chat_join_state(self.chat_json, self.data.channel_id, False)
             
-            if self.chzzk_titleData.loc[self.chzzk_id, 'live_state'] == "CLOSE":
+            if self.chzzk_titleData.loc[self.data.channel_id, 'live_state'] == "CLOSE":
                 await asyncio.sleep(5)
                 continue
             
@@ -56,7 +55,7 @@ class chzzk_chat_message:
                 await self._connect_and_run()
             except Exception as e:
                 await DiscordWebhookSender._log_error(f"error in chat manager: {e}")
-                self._change_chzzk_chat_json()
+                change_chat_join_state(self.chat_json, self.data.channel_id)
             finally:
                 await self._cleanup_tasks()
 
@@ -65,7 +64,7 @@ class chzzk_chat_message:
                                     subprotocols=['chat'], 
                                     ping_interval=None) as sock:
             self.data.sock = sock
-            self.data.cid = self.chzzk_titleData.loc[self.chzzk_id, 'chatChannelId']
+            self.data.cid = self.chzzk_titleData.loc[self.data.channel_id, 'chatChannelId']
             
             await self.connect(self.if_chzzk_Join())
             message_queue = asyncio.Queue()
@@ -88,7 +87,7 @@ class chzzk_chat_message:
                     await asyncio.wait([task], timeout=2)
                 except Exception as cancel_error:
                     error_logger = DiscordWebhookSender()
-                    await error_logger._log_error(f"Error cancelling task for {self.chzzk_id}: {cancel_error}")
+                    await error_logger._log_error(f"Error cancelling task for {self.data.channel_id}: {cancel_error}")
 
     async def _message_receiver(self, message_queue: asyncio.Queue):
         while True:
@@ -395,10 +394,6 @@ class chzzk_chat_message:
         profile_image = environ['default_thumbnail']
 
         return profile_image
-
-    def _change_chzzk_chat_json(self, chzzkID_chat_rejoin = True):
-        self.chat_json[self.chzzk_id] = chzzkID_chat_rejoin
-        self.supabase.table('date_update').upsert({"idx": 0, "chat_json": self.chat_json}).execute()
     
     def if_chzzk_Join(self) -> int:
         try:

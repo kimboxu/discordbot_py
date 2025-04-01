@@ -8,10 +8,9 @@ from urllib.request import urlretrieve
 from discord_webhook_sender import DiscordWebhookSender, get_list_of_urls
 
 class chzzk_live_message():
-	def __init__(self, init_var, chzzk_id):
+	def __init__(self, init_var: base.initVar, chzzk_id):
 		self.init = init_var
 		self.DO_TEST = init_var.DO_TEST
-		self.supabase = init_var.supabase
 		self.userStateData = init_var.userStateData
 		self.chzzkIDList = init_var.chzzkIDList
 		self.chzzk_titleData = init_var.chzzk_titleData
@@ -43,7 +42,7 @@ class chzzk_live_message():
 
 		except Exception as e:
 			asyncio.create_task(DiscordWebhookSender._log_error(f"testerror get state_data chzzk live{e}.{self.channel_id}.{str(state_data)}"))
-			await base.update_flag(self.supabase, 'user_date')
+			await base.update_flag('user_date')
 
 	async def _get_state_data(self):
 		return await base.get_message(
@@ -90,7 +89,7 @@ class chzzk_live_message():
 
 		self.data.livePostList.append((message, json_data))
 
-		await base.save_profile_data(self.chzzkIDList, 'chzzk', self.channel_id, self.supabase)
+		await base.save_profile_data(self.chzzkIDList, 'chzzk', self.channel_id)
 
 		if message == "뱅온!": 
 			self.data.LiveCountStart = datetime.now().isoformat()
@@ -123,7 +122,7 @@ class chzzk_live_message():
 
 			list_of_urls = get_list_of_urls(self.DO_TEST, self.userStateData, channel_name, self.channel_id, json_data, db_name)
 			asyncio.create_task(DiscordWebhookSender().send_messages(list_of_urls))
-			await base.save_airing_data(self.chzzk_titleData, 'chzzk', self.channel_id, self.supabase)
+			await base.save_airing_data(self.chzzk_titleData, 'chzzk', self.channel_id)
 
 		except Exception as e:
 			asyncio.create_task(DiscordWebhookSender._log_error(f"postLiveMSG {e}"))

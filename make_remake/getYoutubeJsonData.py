@@ -294,7 +294,7 @@ class getYoutubeJsonData:
 		for platform_list in platform_lists.values():
 			try:
 				username = platform_list.loc[channelID, 'channelName']
-				avatar_url = platform_list.loc[channelID, 'channel_thumbnail']
+				avatar_url = platform_list.loc[channelID, 'profile_image']
 				break
 			except KeyError:
 				continue

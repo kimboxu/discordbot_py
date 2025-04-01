@@ -175,8 +175,9 @@ async def load_user_state_data(init: initVar):
 	# 플래그 업데이트
 	await update_flag(init.supabase, 'user_date', False)
 
-async def update_flag(supabase, field, value):
+async def update_flag(field, value):
 	# 비동기로 플래그 업데이트
+	supabase = create_client(environ['supabase_url'], environ['supabase_key'])
 	await asyncio.to_thread(
 		lambda: supabase.table('date_update').upsert({
 			"idx": 0,
@@ -626,10 +627,11 @@ def afreeca_getChannelOffStateData(stateData, afreeca_id, profile_image = ""):
 	except Exception as e: 
 		asyncio.create_task(DiscordWebhookSender._log_error(f"error getChannelOffStateData afreeca {e}"))
 
-async def save_airing_data(titleData, platform: str, id_, supabase):
+async def save_airing_data(titleData, platform: str, id_):
 	def get_index(channel_list, target_id):
 		return {id: idx for idx, id in enumerate(channel_list)}[target_id]
 	
+	supabase = create_client(environ['supabase_url'], environ['supabase_key'])
 	table_name = platform + "_titleData"
 	data_func = {
 				"idx": get_index(titleData["channelID"], id_),
@@ -649,12 +651,12 @@ async def save_airing_data(titleData, platform: str, id_, supabase):
 			asyncio.create_task(DiscordWebhookSender._log_error(f"error saving profile data {e}"))
 			await asyncio.sleep(0.5)
 
-async def save_profile_data(IDList, platform: str, id, supabase):
+async def save_profile_data(IDList, platform: str, id):
 	# Platform specific configurations
 	def get_index(channel_list, target_id):
 		return {id: idx for idx, id in enumerate(channel_list)}[target_id]
 
-
+	supabase = create_client(environ['supabase_url'], environ['supabase_key'])
 	table_name = platform + "IDList"
 	data_func = {
 			"idx": get_index(IDList["channelID"], id),
@@ -668,3 +670,16 @@ async def save_profile_data(IDList, platform: str, id, supabase):
 		except Exception as e:
 			asyncio.create_task(DiscordWebhookSender._log_error(f"error saving profile data {e}"))
 			await asyncio.sleep(0.5)
+
+async def change_chat_join_state(chat_json, channel_id, chat_rejoin = True):
+	chat_json[channel_id] = chat_rejoin
+	supabase = create_client(environ['supabase_url'], environ['supabase_key'])
+	for _ in range(3):
+		try:
+			supabase.table('date_update').upsert({"idx": 0, "chat_json": chat_json}).execute()
+			break
+		except Exception as e:
+			asyncio.create_task(DiscordWebhookSender._log_error(f"error saving profile data {e}"))
+			await asyncio.sleep(0.5)
+	
+	
