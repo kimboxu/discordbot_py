@@ -196,7 +196,11 @@ class chzzk_live_message(base_live_message):
         )
     
     def _is_valid_state_data(self, state_data):
-        return state_data["code"] == 200
+        try:
+            return state_data["code"] == 200
+        except Exception as e:
+            asyncio.create_task(DiscordWebhookSender._log_error(f"{datetime.now()} _is_valid_state_data.{self.channel_id}.{e}"))
+            return False
 
     def _get_stream_data(self, state_data):
         return base.chzzk_getChannelOffStateData(
