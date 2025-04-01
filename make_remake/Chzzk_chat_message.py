@@ -425,7 +425,6 @@ class chzzk_chat_message:
         if self.data.channel_id == "charmel"   	: himent = "챠하"
         if self.data.channel_id == "mawang0216"	: himent = "마하"
         if self.data.channel_id == "bighead033"	: himent = "빅하"
-        if self.data.channel_id == "suisui_again"  : himent = "싀하"
         if himent: self._send(himent)
 
     def offAirChat(self):
