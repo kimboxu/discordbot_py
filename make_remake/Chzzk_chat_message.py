@@ -409,7 +409,7 @@ class chzzk_chat_message:
     def get_uid(self, chat_data) -> str:
         return chat_data.get('uid') or chat_data.get('userId')
 
-    def get_payAmount(chat_data, chat_type) -> str:
+    def get_payAmount(self, chat_data, chat_type) -> str:
         if chat_type == "후원": payAmount = loads(chat_data['extras'])['payAmount']
         else: payAmount = None
         return payAmount
