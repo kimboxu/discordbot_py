@@ -360,6 +360,20 @@ class chzzk_live_message(base_live_message):
                 "footer": { "text": f"뱅온 시간", "inline": True, "icon_url": base.iconLinkData().chzzk_icon },
                 "timestamp": base.changeUTCtime(started_at)}]}
 
+		# return {"username": self.chzzkIDList.loc[chzzkID, 'channelName'], "avatar_url": self.chzzkIDList.loc[chzzkID, 'profile_image'],
+		# 		"embeds": [
+		# 			{"color": int(self.chzzkIDList.loc[chzzkID, 'channel_color']),
+		# 			"fields": [
+		# 				{"name": "이전 방제", "value": str(self.titleData.loc[chzzkID,'title1']), "inline": True},
+		# 				{"name": "현재 방제", "value": title, "inline": True},
+		# 				{"name": ':busts_in_silhouette: 시청자수',
+		# 				"value": viewer_count, "inline": True}],
+		# 			"title":  f"{self.chzzkIDList.loc[chzzkID, 'channelName']} {message}\n",
+		# 		"url": url,
+		# 		"image": {"url": thumbnail},
+		# 		"footer": { "text": f"뱅온 시간", "inline": True, "icon_url": base.iconLinkData().chzzk_icon },
+		# 		"timestamp": base.changeUTCtime(started_at)}]}
+
     def get_state_data_change_title_json(self, message, url):
         return {"username": self._get_channel_name(), "avatar_url": self.id_list.loc[self.channel_id, 'profile_image'],
                 "embeds": [
@@ -528,9 +542,24 @@ class afreeca_live_message(base_live_message):
                 "footer": { "text": f"뱅온 시간", "inline": True, "icon_url": base.iconLinkData().soop_icon },
                 "timestamp": base.changeUTCtime(started_at)}]}
     
+	# def get_online_titleChange_state_json(self, message, title, url, started_at, thumbnail):
+	# 	return {"username": self._get_channel_name(), "avatar_url": self.afreecaIDList.loc[self.channel_id, 'profile_image'],\
+	# 			"embeds": [
+	# 				{"color": int(self.afreecaIDList.loc[self.channel_id, 'channel_color']),
+	# 				"fields": [
+	# 					{"name": "이전 방제", "value": str(self.titleData.loc[self.channel_id,'title1']), "inline": True},
+	# 					{"name": "현재 방제", "value": title, "inline": True}],
+	# 				"title":  f"{self._get_channel_name()} {message}\n",\
+	# 			"url": url, \
+	# 			"image": {"url": thumbnail},
+	# 			"footer": { "text": f"뱅온 시간", "inline": True, "icon_url": base.iconLinkData().soop_icon },
+	# 			"timestamp": base.changeUTCtime(started_at)}]}
+
     def getOffJson(self): 
         return {"username": self._get_channel_name(), "avatar_url": self.id_list.loc[self.channel_id, 'profile_image'],
                 "embeds": [
                     {"color": int(self.id_list.loc[self.channel_id, 'channel_color']),
                     "title": self._get_channel_name() +" 방송 종료\n",
                 }]}
+    
+    
