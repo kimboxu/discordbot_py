@@ -130,7 +130,7 @@ class chzzk_chat_message:
                     if not await self.check_chat_message(raw_message, chat_type):
                         continue
                     
-                    if bdy := await self.check_TEMPORARY_RESTRICT(raw_message):
+                    if  not (bdy := await self.check_TEMPORARY_RESTRICT(raw_message)):
                         continue
                     
                     chzzk_chat_list = self.get_chzzk_chat_list(bdy)
@@ -179,7 +179,7 @@ class chzzk_chat_message:
             duration = bdy.get('duration', 30)
             asyncio.create_task(DiscordWebhookSender._log_error(f"{datetime.now()} 임시 제한 상태입니다. {duration}초 동안 대기합니다."))
             await asyncio.sleep(duration)
-            return True
+            return {}
         return bdy
 
     def get_chzzk_chat_list(self, bdy):
@@ -203,7 +203,7 @@ class chzzk_chat_message:
                     asyncio.create_task(DiscordWebhookSender._log_error(self.print_msg(chat_data, chat_type), webhook_url=environ['donation_post_url']))
 
                 if not(nickname in [*self.init.chzzk_chatFilter["channelName"]]):
-                    asyncio.create_task(print(f"{datetime.now()} {self.print_msg(chat_data, chat_type)}"))
+                    print(f"{datetime.now()} {self.print_msg(chat_data, chat_type)}")
 
                 if nickname not in [*self.init.chzzk_chatFilter["channelName"]]: #chzzk_chatFilter에 없는 사람 채팅은 제거
                     return
@@ -374,7 +374,7 @@ class chzzk_chat_message:
             self.init.chzzk_titleData.loc[self.data.channel_id, 'chatChannelId'] = self.data.cid
             await save_airing_data(self.init.chzzk_titleData, 'chzzk', self.data.channel_id)
 
-    def get_nickname(chat_data):
+    def get_nickname(self, chat_data):
         if chat_data['extras'] is None or loads(chat_data['extras']).get('styleType', {}) in [1, 2, 3]:
             return None
             
@@ -394,7 +394,7 @@ class chzzk_chat_message:
         
         return '(알 수 없음)'
 
-    def get_chat(chat_data) -> str:
+    def get_chat(self, chat_data) -> str:
         if 'msg' in chat_data:
             msg = chat_data['msg']
         elif 'content' in chat_data:
@@ -406,7 +406,7 @@ class chzzk_chat_message:
             msg = "/" + msg
         return msg
 
-    def get_uid(chat_data) -> str:
+    def get_uid(self, chat_data) -> str:
         return chat_data.get('uid') or chat_data.get('userId')
 
     def get_payAmount(chat_data, chat_type) -> str:
@@ -414,9 +414,9 @@ class chzzk_chat_message:
         else: payAmount = None
         return payAmount
 
-    async def print_msg(self, chat_data, chat_type) -> str:
+    def print_msg(self, chat_data, chat_type) -> str:
 
-        def format_message(self, msg_type, nickname, message, time, **kwargs):
+        def format_message(msg_type, nickname, message, time, **kwargs):
             base = f"[{chat_type} - {self.data.channel_name}] {nickname}"
             time = datetime.fromtimestamp(time/1000)
             if msg_type == 'donation':
@@ -427,8 +427,17 @@ class chzzk_chat_message:
             extras = loads(chat_data['extras'])
             if 'payAmount' in extras:
                 message = format_message('donation', self.get_nickname(chat_data), chat_data['msg'], chat_data['msgTime'], amount=extras['payAmount'])
-            else:
+            elif 'month' in extras:
+                #구독
+                nickname = extras["nickname"]
+                chat = chat_data['msg']
+                msgTime = chat_data['msgTime']
+                month = extras["month"]
+                tierName = extras["tierName"] #구독 티어 이름
+                tierNo = extras["tierNo"]   #구독 티어 
                 return  # 도네이션 금액이 없는 경우 처리하지 않음
+            else:
+                return
 
         else:
             msg = chat_data['msg'] if chat_type == "채팅" else chat_data['content']
