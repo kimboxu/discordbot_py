@@ -42,10 +42,9 @@ class afreeca_live_message():
 				await self._handle_offline_status()
 
 		except Exception as e:
-			asyncio.create_task(DiscordWebhookSender._log_error(f"error get state_data afreeca live .{self.channel_id}.{e}.{state_data}"))
-			if  -1 not in [str(state_data).find("Error"), str(state_data).find("error")]:
-				len(1)
-
+			asyncio.create_task(DiscordWebhookSender._log_error(f"error get state_data afreeca live .{self.channel_id}.{e}"))
+			await base.update_flag('user_date')
+			
 	def _is_valid_state_data(self, state_data):
 		try:
 			state_data["station"]["user_id"]
@@ -95,7 +94,7 @@ class afreeca_live_message():
 		
 		self.data.livePostList.append((message, json_data))
 		
-		await base.save_profile_data(self.afreecaIDList, 'afreeca')
+		await base.save_profile_data(self.afreecaIDList, 'afreeca', self.channel_id)
 
 		if message == "뱅온!": 
 			self.data.LiveCountStart = datetime.now().isoformat()
@@ -133,7 +132,7 @@ class afreeca_live_message():
 			list_of_urls = get_list_of_urls(self.DO_TEST, self.userStateData, channel_name, self.channel_id, json_data, db_name)
 			asyncio.create_task(DiscordWebhookSender().send_messages(list_of_urls))
 
-			await base.save_airing_data(self.afreeca_titleData, 'afreeca')
+			await base.save_airing_data(self.afreeca_titleData, 'afreeca', self.channel_id)
 
 		except Exception as e:
 			asyncio.create_task(DiscordWebhookSender._log_error(f"postLiveMSG {e}"))
@@ -269,7 +268,7 @@ class afreeca_live_message():
 			return thumbnail[frontIndex:thumbnail.index(".png") + 4]
 		except:
 			return None
-	def saveImage(self, state_data): urlretrieve(self.getImageURL(state_data), "explain.png") # save thumbnail image to png
+	def saveImage(self): urlretrieve(self.getImageURL(), "explain.png") # save thumbnail image to png
 
 	def getImageURL(self) -> str:
 		return f"https://liveimg.afreecatv.com/m/{self.afreeca_titleData.loc[self.channel_id, 'chatChannelId']}"

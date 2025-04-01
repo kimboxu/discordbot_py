@@ -12,7 +12,6 @@ class BaseLiveMessage(ABC):
     def __init__(self, init_var, channel_id):
         self.init = init_var
         self.DO_TEST = init_var.DO_TEST
-        self.supabase = init_var.supabase
         self.userStateData = init_var.userStateData
         self.channel_id = channel_id
         self.data = self._create_data_object()
@@ -221,7 +220,7 @@ class ChzzkLiveMessage(BaseLiveMessage):
 
         self.data.livePostList.append((message, json_data))
 
-        await base.save_profile_data(self.chzzkIDList, 'chzzk', self.channel_id, self.supabase)
+        await base.save_profile_data(self.chzzkIDList, 'chzzk', self.channel_id)
 
         if message == "뱅온!": 
             self.data.LiveCountStart = datetime.now().isoformat()
@@ -246,7 +245,7 @@ class ChzzkLiveMessage(BaseLiveMessage):
         return self.chzzk_titleData.loc[self.channel_id,'title2']
     
     async def _save_airing_data(self):
-        await base.save_airing_data(self.chzzk_titleData, 'chzzk', self.channel_id, self.supabase)
+        await base.save_airing_data(self.chzzk_titleData, 'chzzk', self.channel_id)
     
     # 기존 메서드들 (필요시 유지)
     def ifChangeTitle(self):
@@ -484,7 +483,7 @@ class AfreecaLiveMessage(BaseLiveMessage):
         
         self.data.livePostList.append((message, json_data))
         
-        await base.save_profile_data(self.afreecaIDList, 'afreeca', self.supabase)
+        await base.save_profile_data(self.afreecaIDList, 'afreeca', self.channel_id)
 
         if message == "뱅온!": 
             self.data.LiveCountStart = datetime.now().isoformat()
@@ -513,7 +512,7 @@ class AfreecaLiveMessage(BaseLiveMessage):
         self.afreeca_titleData.loc[self.channel_id,'title2']
     
     async def _save_airing_data(self):
-        await base.save_airing_data(self.afreeca_titleData, 'afreeca', self.channel_id, self.supabase)
+        await base.save_airing_data(self.afreeca_titleData, 'afreeca', self.channel_id)
     
     # 기존 메서드들 (필요시 유지)
     def ifChangeTitle(self):

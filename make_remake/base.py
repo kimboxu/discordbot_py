@@ -645,7 +645,7 @@ async def save_airing_data(titleData, platform: str, id_):
 
 	for _ in range(3):
 		try:
-			supabase.table(table_name).upsert(data_func()).execute()
+			supabase.table(table_name).upsert(data_func).execute()
 			break
 		except Exception as e:
 			asyncio.create_task(DiscordWebhookSender._log_error(f"error saving profile data {e}"))
@@ -665,7 +665,7 @@ async def save_profile_data(IDList, platform: str, id):
 
 	for _ in range(3):
 		try:
-			supabase.table(table_name).upsert(data_func()).execute()
+			supabase.table(table_name).upsert(data_func).execute()
 			break
 		except Exception as e:
 			asyncio.create_task(DiscordWebhookSender._log_error(f"error saving profile data {e}"))
