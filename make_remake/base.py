@@ -679,7 +679,7 @@ async def change_chat_join_state(chat_json, channel_id, chat_rejoin = True):
 			supabase.table('date_update').upsert({"idx": 0, "chat_json": chat_json}).execute()
 			break
 		except Exception as e:
-			asyncio.create_task(DiscordWebhookSender._log_error(f"error saving profile data {e}"))
+			asyncio.create_task(DiscordWebhookSender._log_error(f"echange_chat_join_state {e}"))
 			await asyncio.sleep(0.5)
 	
 	
