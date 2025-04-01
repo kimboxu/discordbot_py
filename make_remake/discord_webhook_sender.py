@@ -144,10 +144,18 @@ def get_list_of_urls(DO_TEST, userStateData, name, channel_id, json_data, db_nam
         
         for discordWebhookURL in userStateData['discordURL']:
                 try:
-                    if ((userStateData.loc[discordWebhookURL, db_name] and
-                    name in userStateData.loc[discordWebhookURL, db_name].get(channel_id, []))):
+                    user_data = userStateData.loc[discordWebhookURL, db_name]
+                     # 데이터 유형 확인 후 리스트 변환
+                    if isinstance(user_data, str):
+                        name_list = [user_data]  # 문자열을 리스트로 변환
+                    elif isinstance(user_data, dict):
+                        name_list = user_data.get(channel_id, [])  # 딕셔너리면 get 사용
+                    else:
+                        name_list = []  # 그 외의 경우 빈 리스트
+
+                    if name in name_list:
                         result_urls.append((discordWebhookURL, json_data))
-                except (KeyError, AttributeError):
+                except (KeyError, AttributeError) as e:
                     # 특정 URL 처리 중 오류가 발생해도 다른 URL 처리는 계속 진행
                     continue
                 
