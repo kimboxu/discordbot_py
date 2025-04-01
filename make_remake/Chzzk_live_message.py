@@ -3,243 +3,244 @@ import asyncio
 from json import loads
 from datetime import datetime
 from os import remove, environ
-from requests import post, get
+from requests import post
 from urllib.request import urlretrieve
-from discord_webhook_sender import DiscordWebhookSender
+from discord_webhook_sender import DiscordWebhookSender, get_list_of_urls
 
 class chzzk_live_message():
-	def __init__(self, init_var):
+	def __init__(self, init_var, chzzk_id):
 		self.init = init_var
 		self.DO_TEST = init_var.DO_TEST
+		self.supabase = init_var.supabase
 		self.userStateData = init_var.userStateData
 		self.chzzkIDList = init_var.chzzkIDList
 		self.chzzk_titleData = init_var.chzzk_titleData
-		self.chzzk_id = ""
-		self.data = base.afreecaLiveData()
+		self.channel_id = chzzk_id
+		self.data = base.LiveData()
 
-	async def chzzk_liveMsg(self):
+	async def start(self):
 		await self.addMSGList()
-		await self.postLiveMSG()
+		await self.postLive_massge()
 
 	async def addMSGList(self):
-		for _ in range(10):
-			try:
-				list_of_offState_chzzkID = await base.get_message(self.getChzzkDataList(), "chzzk")
-				break
-			except:
-				await asyncio.sleep(0.1)
 		try:
-			for offState_chzzkID in list_of_offState_chzzkID:
-				for offState, chzzkID, should_process in offState_chzzkID:
-					if not should_process: continue
+			state_data = await self._get_state_data()
+				
+			if not self._is_valid_state_data(state_data):
+				return
 
-					if base.if_after_time(self.data.change_title_time) and self.chzzk_titleData.loc[chzzkID,'title2'] != self.chzzk_titleData.loc[chzzkID,'title1']:
-						self.chzzk_titleData.loc[chzzkID,'title2'] = self.chzzk_titleData.loc[chzzkID,'title1']
-						
-					if offState["code"] != 200: continue
+			self._update_title_if_needed()
 
-					stream_data = base.chzzk_getChannelOffStateData(
-						offState["content"], 
-						self.chzzkIDList.loc[chzzkID, "channel_code"], 
-						self.chzzkIDList.loc[chzzkID, 'channel_thumbnail']
-					)
-					live, title, thumbnail_url = stream_data
+			# 스트림 데이터 얻기
+			stream_data = self._get_stream_data(state_data)
+			self._update_stream_info(stream_data, state_data)
 
-					if self._should_process_online_status(live, title, chzzkID, offState):
-						await self._handle_online_status(offState, chzzkID, live, title, thumbnail_url)
-
-					elif self._should_process_offline_status(live, chzzkID, offState):
-						await self._handle_offline_status(chzzkID, title, offState)
+			# 온라인/오프라인 상태 처리
+			if self._should_process_online_status():
+				await self._handle_online_status(state_data)
+			elif self._should_process_offline_status():
+				await self._handle_offline_status(state_data)
 
 		except Exception as e:
-			asyncio.create_task(DiscordWebhookSender._log_error(f"testerror get stateData chzzk live{e}.{chzzkID}.{str(offState)}"))
-			self.chat_json[self.data.chzzkID] = True
+			asyncio.create_task(DiscordWebhookSender._log_error(f"testerror get state_data chzzk live{e}.{self.channel_id}.{str(state_data)}"))
+			await base.update_flag(self.supabase, 'user_date')
 
-	def _should_process_online_status(self, live, title, chzzkID, offState):
-		return ((self.checkStateTransition(live, chzzkID, offState, "OPEN") or 
-		   (self.ifChangeTitle(title, chzzkID))) and
+	async def _get_state_data(self):
+		return await base.get_message(
+			"chzzk", 
+			base.chzzk_getLink(self.chzzkIDList.loc[self.channel_id, "channel_code"])
+		)
+	
+	def _is_valid_state_data(self, state_data):
+		return state_data["code"] == 200
+
+	def _update_title_if_needed(self):
+		if (base.if_after_time(self.data.change_title_time) and 
+			self.chzzk_titleData.loc[self.channel_id,'title2'] != self.chzzk_titleData.loc[self.channel_id,'title1']):
+			self.chzzk_titleData.loc[self.channel_id,'title2'] = self.chzzk_titleData.loc[self.channel_id,'title1']
+
+	def _get_stream_data(self, state_data):
+		return base.chzzk_getChannelOffStateData(
+			state_data["content"], 
+			self.chzzkIDList.loc[self.channel_id, "channel_code"], 
+			self.chzzkIDList.loc[self.channel_id, 'profile_image']
+		)
+	
+	def _update_stream_info(self, stream_data, state_data):
+		self.data.start_at["openDate"] = state_data['content']["openDate"]
+		self.data.start_at["closeDate"] = state_data['content']["closeDate"]
+		self.data.live, self.data.title, self.data.profile_image = stream_data
+		self.chzzkIDList.loc[self.channel_id, 'profile_image'] = self.data.profile_image
+
+	def _should_process_online_status(self):
+		return ((self.checkStateTransition("OPEN") or 
+		   (self.ifChangeTitle())) and
 		   base.if_after_time(self.data.LiveCountEnd, sec = 15) )
 
-	def _should_process_offline_status(self, live, chzzkID, offState):
-		return (self.checkStateTransition(live, chzzkID, offState, "CLOSE") and 
+	def _should_process_offline_status(self):
+		return (self.checkStateTransition("CLOSE") and 
 		  base.if_after_time(self.data.LiveCountStart, sec = 15))
 	
-	async def _handle_online_status(self, offState, chzzkID, live, title, thumbnail_url):
-		message = self.getMessage(live, chzzkID, offState)
-		json = await self.getOnAirJson(chzzkID, message, offState, thumbnail_url, title, live)
+	async def _handle_online_status(self, state_data):
+		message = self.getMessage()
+		json_data = await self.getOnAirJson(message, state_data)
 
-		self.onLineTime(offState, chzzkID, message)
-		self.onLineTitle(title, chzzkID, message)
+		self.onLineTime(message)
+		self.onLineTitle(message)
 
-		old_title = self.chzzk_titleData.loc[chzzkID,'title2']
-		self.data.livePostList.append((chzzkID, message, title, old_title, json))
+		self.data.livePostList.append((message, json_data))
 
-		await base.save_airing_data(self.init, 'chzzk', chzzkID)
-		await base.save_profile_data(self.init, 'chzzk', chzzkID)
+		await base.save_profile_data(self.chzzkIDList, 'chzzk', self.channel_id, self.supabase)
 
 		if message == "뱅온!": 
 			self.data.LiveCountStart = datetime.now().isoformat()
 		self.data.change_title_time = datetime.now().isoformat()
 
-	async def _handle_offline_status(self, chzzkID, title, offState):
+	async def _handle_offline_status(self, state_data):
 		message = "뱅종"
-		json = await self.getOffJson(chzzkID, offState, message)
+		json_data = await self.getOffJson(state_data, message)
 
-		self.offLineTitle(chzzkID)
-		self.offLineTime(chzzkID, offState)
-		self.data.livePostList.append((chzzkID, message, title, None, json))
+		self.offLineTitle()
+		self.offLineTime()
 
-		await base.save_airing_data(self.init, 'chzzk', chzzkID)
+		self.data.livePostList.append((message, json_data))
+
 		self.data.LiveCountEnd = datetime.now().isoformat()
 		self.data.change_title_time = datetime.now().isoformat()
+
+	def _get_channel_name(self):
+		return self.chzzkIDList.loc[self.channel_id, 'channelName']
 	
-	async def postLiveMSG(self):
+	async def postLive_massge(self):
 		try:
 			if not self.data.livePostList: 
 				return
-			chzzkID, message, title, old_title, json = self.data.livePostList.pop(0)
-			channel_name = self.chzzkIDList.loc[chzzkID, 'channelName']
+			message, json_data = self.data.livePostList.pop(0)
+			channel_name = self._get_channel_name()
 
-			if message in ["뱅온!", "방제 변경"]:
-				print(f"{datetime.now()} onLine {channel_name} {message}")
-				if message == "방제 변경":
-					print(f"{datetime.now()} 이전 방제: {old_title}")
-					print(f"{datetime.now()} 현재 방제: {title}")
+			db_name = self._get_db_name(message)
+			self._log_message(message, channel_name)
 
-				list_of_urls = self.make_online_list_of_urls(chzzkID, message, json)
-				asyncio.create_task(DiscordWebhookSender().send_messages(list_of_urls))
-				# asyncio.create_task(base.async_post_message(list_of_urls))
-				
-			if message in ["뱅종"]:
-				print(f"{datetime.now()} offLine {channel_name}")
-				list_of_urls = self.make_offline_list_of_urls(chzzkID, json)
-				asyncio.create_task(DiscordWebhookSender().send_messages(list_of_urls))
-				# asyncio.create_task(base.async_post_message(list_of_urls))
+			list_of_urls = get_list_of_urls(self.DO_TEST, self.userStateData, channel_name, self.channel_id, json_data, db_name)
+			asyncio.create_task(DiscordWebhookSender().send_messages(list_of_urls))
+			await base.save_airing_data(self.chzzk_titleData, 'chzzk', self.channel_id, self.supabase)
+
 		except Exception as e:
 			asyncio.create_task(DiscordWebhookSender._log_error(f"postLiveMSG {e}"))
 			self.data.livePostList.clear()
 	
-	def getChzzkDataList(self):
-		headers = base.getChzzkHeaders()
-		cookie = base.getChzzkCookie()
-
-		return [[(chzzk_getLink(self.chzzkIDList.loc[chzzkID, "channel_code"]), headers, cookie), chzzkID] for chzzkID in self.chzzkIDList["channelID"]]
-
-	def make_online_list_of_urls(self, chzzkID, message, json):
-		if self.DO_TEST:
-			return [(environ['errorPostBotURL'], json)]
-
-		return [
-			(discordWebhookURL, json) 
-			for discordWebhookURL in self.userStateData['discordURL']
-			if self.ifAlarm(discordWebhookURL, chzzkID, message)
-		]
-
-	def make_offline_list_of_urls(self, chzzkID, json):
-		if self.DO_TEST: return [(environ['errorPostBotURL'], json)]
-		else: return [(discordWebhookURL, json) for discordWebhookURL in self.userStateData['discordURL'] if self.ifOffAlarm(chzzkID, discordWebhookURL)]
-
-	def onLineTitle(self, title, chzzkID, message):
+	def _get_db_name(self, message):
+		"""메시지에 맞는 DB 이름 반환"""
 		if message == "뱅온!":
-			self.chzzk_titleData.loc[chzzkID, 'live_state'] = "OPEN"
-		self.chzzk_titleData.loc[chzzkID,'title2'] = self.chzzk_titleData.loc[chzzkID,'title1']
-		self.chzzk_titleData.loc[chzzkID,'title1'] = title
-
-	def onLineTime(self, offState, chzzkID, message):
-		if message != "뱅온!":
-			return
-		self.chzzk_titleData.loc[chzzkID,'update_time'] = self.getStarted_at(offState,"openDate")
-
-	def offLineTitle(self, chzzkID):
-		self.chzzk_titleData.loc[chzzkID, 'live_state'] = "CLOSE"
-
-	def offLineTime(self, chzzkID, offState):
-		self.chzzk_titleData.loc[chzzkID,'update_time'] = self.getStarted_at(offState,"closeDate")
-
-	def ifAlarm(self, discordWebhookURL, chzzkID, message):#if user recv to online Alarm
+			return "뱅온 알림"
+		elif message == "방제 변경":
+			return "방제 변경 알림"
+		elif message == "뱅종":
+			return "방종 알림"
+		return "알림"
+	
+	def _log_message(self, message, channel_name):
+		"""메시지 로깅"""
+		now = datetime.now()
 		if message == "뱅온!":
-			return self.userStateData["뱅온 알림"][discordWebhookURL] and self.chzzkIDList.loc[chzzkID, 'channelName'] in self.userStateData["뱅온 알림"][discordWebhookURL]
-		else:
-			return self.userStateData[f"방제 변경 알림"][discordWebhookURL] and self.chzzkIDList.loc[chzzkID, 'channelName'] in self.userStateData[f"방제 변경 알림"][discordWebhookURL]
+			print(f"{now} onLine {channel_name} {message}")
+		elif message == "방제 변경":
+			old_title = self._get_old_title()
+			print(f"{now} onLine {channel_name} {message}")
+			print(f"{now} 이전 방제: {old_title}")
+			print(f"{now} 현재 방제: {self.data.title}")
+		elif message == "뱅종":
+			print(f"{now} offLine {channel_name}")
+	
+	def _get_old_title(self):
+		return self.chzzk_titleData.loc[self.c,'title2']
 
-	def ifChangeTitle(self, title, chzzkID):
-		return title not in [str(self.chzzk_titleData.loc[chzzkID,'title1']), str(self.chzzk_titleData.loc[chzzkID,'title2'])]
+	def onLineTitle(self, message):
+		if message == "뱅온!":
+			self.chzzk_titleData.loc[self.channel_id, 'live_state'] = "OPEN"
+		self.chzzk_titleData.loc[self.channel_id,'title2'] = self.chzzk_titleData.loc[self.channel_id,'title1']
+		self.chzzk_titleData.loc[self.channel_id,'title1'] = self.data.title
 
-	def ifOffAlarm(self, chzzkID, discordWebhookURL):
-		return self.userStateData["방종 알림"][discordWebhookURL] and self.chzzkIDList.loc[chzzkID, 'channelName'] in self.userStateData["방종 알림"][discordWebhookURL]
+	def onLineTime(self, message):
+		if message == "뱅온!":
+			self.chzzk_titleData.loc[self.channel_id,'update_time'] = self.getStarted_at("openDate")
 
-	async def getOnAirJson(self, chzzkID, message, offState, thumbnail_url, title, live):
-		url = self.getURL(self.chzzkIDList.loc[chzzkID, "channel_code"])
-		self.chzzkIDList.loc[chzzkID, 'channel_thumbnail'] = thumbnail_url
+	def offLineTitle(self):
+		self.chzzk_titleData.loc[self.channel_id, 'live_state'] = "CLOSE"
+
+	def offLineTime(self):
+		self.chzzk_titleData.loc[self.channel_id,'update_time'] = self.getStarted_at("closeDate")
+
+
+	def ifChangeTitle(self):
+		return self.data.title not in [str(self.chzzk_titleData.loc[self.channel_id,'title1']), str(self.chzzk_titleData.loc[self.channel_id,'title2'])]
+
+	async def getOnAirJson(self, message, state_data):
+		channel_url = self.get_channel_url()
 		
-		if live == "CLOSE":
-			return self.get_offState_change_title_json(chzzkID, message, title, url)
+		if self.data.live == "CLOSE":
+			return self.get_state_data_change_title_json(message, channel_url)
 		
-		started_at, viewer_count, thumbnail = await self.getJsonVars(chzzkID, offState, message)
+		started_at = self.getStarted_at("openDate")
+		viewer_count = self.getViewer_count(state_data)
+		live_thumbnail_image = await self.get_live_thumbnail_image(state_data, message)
 		
 		if message == "뱅온!":
 			return self.get_online_state_json(
-				chzzkID, message, title, url, 
-				started_at, thumbnail, viewer_count
+				message, channel_url, started_at, live_thumbnail_image, viewer_count
 			)
 		
-		return self.get_online_titleChange_state_json(
-			chzzkID, message, title, url,
-			started_at, thumbnail, viewer_count
-		)
+		return self.get_online_titleChange_state_json(message, channel_url, started_at, live_thumbnail_image, viewer_count)
 
-	async def getJsonVars(self, chzzkID, offState, message):
+	async def get_live_thumbnail_image(self, state_data, message):
 		for count in range(20):
-			started_at = self.getStarted_at(offState, "openDate")
-			viewer_count = self.getViewer_count(offState)
-			time_difference = (datetime.now() - datetime.fromisoformat(self.chzzk_titleData.loc[chzzkID, 'update_time'])).total_seconds()
-			if message == "뱅온!" or self.chzzk_titleData.loc[chzzkID, 'live_state'] == "CLOSE" or time_difference < 15: 
-				thumbnail = ""
+			time_difference = (datetime.now() - datetime.fromisoformat(self.chzzk_titleData.loc[self.channel_id, 'update_time'])).total_seconds()
+
+			if message == "뱅온!" or self.chzzk_titleData.loc[self.channel_id, 'live_state'] == "CLOSE" or time_difference < 15: 
+				thumbnail_image = ""
 				break
 
-			thumbnail = self.getThumbnail(chzzkID, offState)
-			if thumbnail is None:
+			thumbnail_image = self.get_thumbnail_image(state_data)
+			if thumbnail_image is None:
 				print(f"{datetime.now()} wait make thumbnail1 {count}")
 				await asyncio.sleep(0.05)
 				continue
 			break
 
-		else: thumbnail = ""
+		else: thumbnail_image = ""
 		
-		if 'liveImageUrl' in offState.get('content', {}) and offState['content']['liveImageUrl']: 
-			self.chzzk_titleData.loc[chzzkID,'channelURL'] = self.getImage(offState)
-		return started_at, viewer_count, thumbnail
+		return thumbnail_image
 
-	def get_online_state_json(self, chzzkID, message, title, url, started_at, thumbnail, viewer_count):
-		return {"username": self.chzzkIDList.loc[chzzkID, 'channelName'], "avatar_url": self.chzzkIDList.loc[chzzkID, 'channel_thumbnail'],
+	def get_online_state_json(self, message, url, started_at, thumbnail, viewer_count):
+		return {"username": self._get_channel_name(), "avatar_url": self.chzzkIDList.loc[self.channel_id, 'profile_image'],
 				"embeds": [
-					{"color": int(self.chzzkIDList.loc[chzzkID, 'channel_color']),
+					{"color": int(self.chzzkIDList.loc[self.channel_id, 'channel_color']),
 					"fields": [
-						{"name": "방제", "value": title, "inline": True},
+						{"name": "방제", "value": self.data.title, "inline": True},
 						# {"name": ':busts_in_silhouette: 시청자수',
 						# "value": viewer_count, "inline": True}
 						],
-					"title":  f"{self.chzzkIDList.loc[chzzkID, 'channelName']} {message}\n",
+					"title":  f"{self._get_channel_name()} {message}\n",
 				"url": url,
 				# "image": {"url": thumbnail},
 				"footer": { "text": f"뱅온 시간", "inline": True, "icon_url": base.iconLinkData().chzzk_icon },
 				"timestamp": base.changeUTCtime(started_at)}]}
 
-	def get_online_titleChange_state_json(self, chzzkID, message, title, url, started_at, thumbnail, viewer_count):
-		return {"username": self.chzzkIDList.loc[chzzkID, 'channelName'], "avatar_url": self.chzzkIDList.loc[chzzkID, 'channel_thumbnail'],
+	def get_online_titleChange_state_json(self, message, url, started_at, thumbnail, viewer_count):
+		return {"username": self._get_channel_name(), "avatar_url": self.chzzkIDList.loc[self.channel_id, 'profile_image'],
 		"embeds": [
-			{"color": int(self.chzzkIDList.loc[chzzkID, 'channel_color']),
+			{"color": int(self.chzzkIDList.loc[self.channel_id, 'channel_color']),
 			"fields": [
-				{"name": "방제", "value": title, "inline": True},
+				{"name": "방제", "value": self.data.title, "inline": True},
 				{"name": ':busts_in_silhouette: 시청자수',
 				"value": viewer_count, "inline": True}
 				],
-			"title":  f"{self.chzzkIDList.loc[chzzkID, 'channelName']} {message}\n",
+			"title":  f"{self._get_channel_name()} {message}\n",
 		"url": url,
 		"image": {"url": thumbnail},
 		"footer": { "text": f"뱅온 시간", "inline": True, "icon_url": base.iconLinkData().chzzk_icon },
 		"timestamp": base.changeUTCtime(started_at)}]}
-		# return {"username": self.chzzkIDList.loc[chzzkID, 'channelName'], "avatar_url": self.chzzkIDList.loc[chzzkID, 'channel_thumbnail'],
+		# return {"username": self.chzzkIDList.loc[chzzkID, 'channelName'], "avatar_url": self.chzzkIDList.loc[chzzkID, 'profile_image'],
 		# 		"embeds": [
 		# 			{"color": int(self.chzzkIDList.loc[chzzkID, 'channel_color']),
 		# 			"fields": [
@@ -253,53 +254,54 @@ class chzzk_live_message():
 		# 		"footer": { "text": f"뱅온 시간", "inline": True, "icon_url": base.iconLinkData().chzzk_icon },
 		# 		"timestamp": base.changeUTCtime(started_at)}]}
 
-	def get_offState_change_title_json(self, chzzkID, message, title, url):
-		return {"username": self.chzzkIDList.loc[chzzkID, 'channelName'], "avatar_url": self.chzzkIDList.loc[chzzkID, 'channel_thumbnail'],
+	def get_state_data_change_title_json(self, message, url):
+		return {"username": self._get_channel_name(), "avatar_url": self.chzzkIDList.loc[self.channel_id, 'profile_image'],
 				"embeds": [
-					{"color": int(self.chzzkIDList.loc[chzzkID, 'channel_color']),
+					{"color": int(self.chzzkIDList.loc[self.channel_id, 'channel_color']),
 					"fields": [
-						{"name": "이전 방제", "value": str(self.chzzk_titleData.loc[chzzkID,'title1']), "inline": True},
-						{"name": "현재 방제", "value": title, "inline": True}],
-					"title":  f"{self.chzzkIDList.loc[chzzkID, 'channelName']} {message}\n",
+						{"name": "이전 방제", "value": str(self.chzzk_titleData.loc[self.channel_id,'title1']), "inline": True},
+						{"name": "현재 방제", "value": self.data.title, "inline": True}],
+					"title":  f"{self._get_channel_name()} {message}\n",
 				"url": url}]}
 
-	async def getOffJson(self, chzzkID, offState, message):
-		started_at = self.getStarted_at(offState,"closeDate")
-		_, _, thumbnail = await self.getJsonVars(chzzkID, offState, message)
-		return {"username": self.chzzkIDList.loc[chzzkID, 'channelName'], "avatar_url": self.chzzkIDList.loc[chzzkID, 'channel_thumbnail'],
+	async def getOffJson(self, state_data, message):
+		started_at = self.getStarted_at("closeDate")
+		live_thumbnail_image = await self.get_live_thumbnail_image(state_data, message)
+		
+		return {"username": self._get_channel_name(), "avatar_url": self.chzzkIDList.loc[self.channel_id, 'profile_image'],
 				"embeds": [
-					{"color": int(self.chzzkIDList.loc[chzzkID, 'channel_color']),
-					"title":  self.chzzkIDList.loc[chzzkID, 'channelName'] +" 방송 종료\n",
-				"image": {"url": thumbnail},
+					{"color": int(self.chzzkIDList.loc[self.channel_id, 'channel_color']),
+					"title":  self._get_channel_name() +" 방송 종료\n",
+				"image": {"url": live_thumbnail_image},
 				"footer": { "text": f"방종 시간", "inline": True, "icon_url": base.iconLinkData().chzzk_icon },
 				"timestamp": base.changeUTCtime(started_at)}]}
 
-	def getURL(self, chzzkID): 
-		return f'https://chzzk.naver.com/live/{chzzkID}'
+	def get_channel_url(self): 
+		return f'https://chzzk.naver.com/live/{self.chzzkIDList.loc[self.channel_id, "channel_code"]}'
 
-	def getStarted_at(self, state_data, status: str): 
-		time_str = state_data['content'][status]
-		if not time_str: 
+	def getStarted_at(self, status: str): 
+		time_str = self.data.start_at[status]
+		if not time_str or time_str == '0000-00-00 00:00:00': 
 			return None
 		try:
-			time = datetime(int(time_str[:4]),int(time_str[5:7]),int(time_str[8:10]),int(time_str[11:13]),int(time_str[14:16]),int(time_str[17:19]))
+			time = datetime.strptime(time_str, '%Y-%m-%d %H:%M:%S')
 			return time.isoformat()
 		except ValueError:
 			return None
 
-	def getViewer_count(self, stateData):
-		return stateData['content']['concurrentUserCount']
+	def getViewer_count(self, state_data):
+		return state_data['content']['concurrentUserCount']
 
-	def getMessage(self, live: str, chzzkID: str, offState) -> str: 
-		return "뱅온!" if (self.checkStateTransition(live, chzzkID, offState, "OPEN")) else "방제 변경"
+	def getMessage(self) -> str: 
+		return "뱅온!" if (self.checkStateTransition("OPEN")) else "방제 변경"
 
-	def getThumbnail(self, chzzkID: str, stateData): #thumbnail shape do transformation able to send to discord
+	def get_thumbnail_image(self, state_data): #thumbnail shape do transformation able to send to discord
 		try:
-			if stateData['content']['liveImageUrl'] is not None:
-				self.saveImage(stateData)
+			if state_data['content']['liveImageUrl'] is not None:
+				self.saveImage(state_data)
 				file = {'file'      : open("explain.png", 'rb')}
-				data = {"username"  : self.chzzkIDList.loc[chzzkID, 'channelName'],
-						"avatar_url": self.chzzkIDList.loc[chzzkID, 'channel_thumbnail']}
+				data = {"username"  : self._get_channel_name(),
+						"avatar_url": self.chzzkIDList.loc[self.channel_id, 'profile_image']}
 				thumbnail  = post(environ['recvThumbnailURL'], files=file, data=data, timeout=3)
 				try: remove('explain.png')
 				except: pass
@@ -312,19 +314,16 @@ class chzzk_live_message():
 			asyncio.create_task(DiscordWebhookSender._log_error(f"{datetime.now()} wait make thumbnail2 {e}"))
 			return None
 
+	def saveImage(self, state_data): urlretrieve(self.getImageURL(state_data), "explain.png") # save thumbnail image to png
 
-	def saveImage(self, stateData): urlretrieve(self.getImage(stateData), "explain.png") # save thumbnail image to png
-
-	def getImage(self, stateData) -> str:
-		link = stateData['content']['liveImageUrl']
+	def getImageURL(self, state_data) -> str:
+		link = state_data['content']['liveImageUrl']
 		link = link.replace("{type", "")
 		link = link.replace("}.jpg", "0.jpg")
 		return link
 
-	def checkStateTransition(self, live: str, chzzkID: str, stateData, target_state: str):
-		if live != target_state or self.chzzk_titleData.loc[chzzkID, 'live_state'] != ("CLOSE" if target_state == "OPEN" else "OPEN"):
+	def checkStateTransition(self, target_state: str):
+		if self.data.live != target_state or self.chzzk_titleData.loc[self.channel_id, 'live_state'] != ("CLOSE" if target_state == "OPEN" else "OPEN"):
 			return False
-		return self.getStarted_at(stateData, ("openDate" if target_state == "OPEN" else "closeDate")) > self.chzzk_titleData.loc[chzzkID, 'update_time']
+		return self.getStarted_at(("openDate" if target_state == "OPEN" else "closeDate")) > self.chzzk_titleData.loc[self.channel_id, 'update_time']
 		
-def chzzk_getLink(chzzkID: str): 
-	return f"https://api.chzzk.naver.com/service/v2/channels/{chzzkID}/live-detail"

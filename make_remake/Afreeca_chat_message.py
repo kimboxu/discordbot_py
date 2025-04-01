@@ -6,12 +6,10 @@ import websockets
 from time import time
 from os import environ
 from json import loads
-from requests import get
+from requests import post
 from datetime import datetime
 from dataclasses import dataclass, field
-from supabase import create_client
-from Afreeca_live_message import afreeca_getChannelStateData, afreeca_getLink
-from discord_webhook_sender import DiscordWebhookSender, get_chat_list_of_urls
+from discord_webhook_sender import DiscordWebhookSender, get_list_of_urls, get_json_data
 
 @dataclass
 class afreecaChatData:
@@ -30,8 +28,9 @@ class afreecaChatData:
     
 
 class AfreecaChat:
-    def __init__(self, init_var: base.initVar, afreeca_id):
+    def __init__(self, init_var: base.initVar, channel_id):
         self.DO_TEST = init_var.DO_TEST
+        self.supabase = init_var.supabase
         self.userStateData = init_var.userStateData
         self.afreecaIDList = init_var.afreecaIDList
         self.afreeca_chatFilter = init_var.afreeca_chatFilter
@@ -42,8 +41,8 @@ class AfreecaChat:
         self.F = "\x0c"
         self.ESC = "\x1b\t"
         self.PING_PACKET = f'{self.ESC}000000000100{self.F}'
-        channel_name = self.afreecaIDList.loc[afreeca_id, 'channelName']
-        self.data = afreecaChatData(channel_id = afreeca_id, channel_name = channel_name)
+        channel_name = self.afreecaIDList.loc[channel_id, 'channelName']
+        self.data = afreecaChatData(channel_id = channel_id, channel_name = channel_name)
         self.chat_event = asyncio.Event()
         self.tasks = []
         # self.stream_end_time = {}  # 각 스트리머의 방송 종료 시간을 저장할 딕셔너리
@@ -61,14 +60,14 @@ class AfreecaChat:
             if self.chat_json[self.data.channel_id]: 
                 self._change_afreeca_chat_json(False)
 
-            if self.afreeca_titleData.loc[self.data.channel_id,'live_state'] == "CLOSE" or self.check_is_passwordDict():
+            if self.afreeca_titleData.loc[self.data.channel_id,'live_state'] == "CLOSE" or await self.check_is_passwordDict():
                 await asyncio.sleep(5)
                 continue
 
             self.data.BNO = self.afreeca_titleData.loc[self.data.channel_id, 'chatChannelId']
             self.data.BID = self.afreecaIDList["afreecaID"][self.data.channel_id]
 
-            channel_data = afreeca_getChannelStateData(self.data.BNO, self.data.BID)
+            channel_data = self.afreeca_getChannelStateData()
             if_adult_channel, TITLE, thumbnail_url, self.CHDOMAIN, self.CHATNO, FTK, BJID, self.CHPT = channel_data
             if TITLE is None: 
                 await asyncio.sleep(1)
@@ -88,7 +87,7 @@ class AfreecaChat:
                 await self._cleanup_tasks()
 
     async def _connect_and_run(self):   
-        self.data.BID = self.afreecaIDList['afreecaID'][self.data.channel_id]
+        self.data.BID = self.afreecaIDList["afreecaID"][self.data.channel_id]
         async with websockets.connect(f"wss://{self.CHDOMAIN}:{self.CHPT}/Websocket/{self.data.BID}",
                                 subprotocols=['chat'],
                                 ssl=self.ssl_context,
@@ -192,21 +191,22 @@ class AfreecaChat:
             if nickname not in [*self.afreeca_chatFilter["channelName"]] or user_id not in [*self.afreeca_chatFilter["channelID"]]: 
                 continue
             
-            user_nick, thumbnail_url = self._get_user_info(user_id)
+            user_nick, profile_image = self._get_user_info(user_id)
             if nickname != user_nick:
                 continue
                 
             # 메시지 중복 체크
-            self._process_new_message(nickname, chat, thumbnail_url)
+            self._process_new_message(nickname, chat, profile_image)
 
     async def _post_chat(self): #send to chatting message
         while not self.data.sock.closed and self.data.afreeca_chat_msg_List:
             try:
                 await self.data.chat_event.wait()
 
-                name, chat, thumbnail_url = self.data.afreeca_chat_msg_List.pop(0)
-                
-                list_of_urls = get_chat_list_of_urls(self.DO_TEST, self.userStateData, name, chat, thumbnail_url, self.data.channel_id, self.data.channel_name)
+                name, chat, profile_image = self.data.afreeca_chat_msg_List.pop(0)
+                json_data = get_json_data(name, chat, self.data.channel_name, profile_image)
+                                
+                list_of_urls = get_list_of_urls(self.DO_TEST, self.userStateData, name, self.data.channel_id, self.data.channel_name, json_data, "chat_user_json")
                 asyncio.create_task(DiscordWebhookSender().send_messages(list_of_urls))
             
                 print(f"{datetime.now()} post chat")
@@ -222,17 +222,16 @@ class AfreecaChat:
 
     def _change_afreeca_chat_json(self, afreeca_chat_rejoin = True):
         self.chat_json[self.data.channel_id] = afreeca_chat_rejoin
-        supabase = create_client(environ['supabase_url'], environ['supabase_key'])
-        supabase.table('date_update').upsert({"idx": 0, "chat_json": self.chat_json}).execute()
+        self.supabase.table('date_update').upsert({"idx": 0, "chat_json": self.chat_json}).execute()
 
     def _get_user_info(self, user_id):
         #유저 정보 가져오기
-        stateData = loads(get(afreeca_getLink(user_id), headers=base.getChzzkHeaders(), timeout=3).text)
+        stateData = base.get_message("afreeca", base.afreeca_getLink(user_id))
         user_nick = stateData['station']['user_nick']
-        _, _, thumbnail_url = base.afreeca_getChannelOffStateData(stateData, stateData["station"]["user_id"])
-        return user_nick, thumbnail_url
+        _, _, profile_image = base.afreeca_getChannelOffStateData(stateData, stateData["station"]["user_id"])
+        return user_nick, profile_image
 
-    def _process_new_message(self, nickname, chat, thumbnail_url):
+    def _process_new_message(self, nickname, chat, profile_image):
         message_id = f"{chat}_{time()}"
         
         # 이미 처리된 메시지인지 확인
@@ -248,7 +247,7 @@ class AfreecaChat:
             self.data.processed_messages.pop(0)
         
         # 메시지 추가 및 이벤트 설정
-        self.data.afreeca_chat_msg_List.append([nickname, chat, thumbnail_url])
+        self.data.afreeca_chat_msg_List.append([nickname, chat, profile_image])
         self.data.chat_event.set()
     
         # 로그 출력
@@ -301,21 +300,56 @@ class AfreecaChat:
                 
         return 1
 
-    def check_is_passwordDict(self):
-        stateData = loads(get(afreeca_getLink(self.afreecaIDList["afreecaID"][self.data.channel_id]), headers=base.getChzzkHeaders(), timeout=3).text)
+    async def check_is_passwordDict(self):
+        stateData = await base.get_message("afreeca", base.afreeca_getLink(self.afreecaIDList["afreecaID"][self.data.channel_id]))
         return stateData['broad'].get('is_password',{False})
+    
+    def afreeca_getChannelStateData(self):
+        url = 'https://live.sooplive.co.kr/afreeca/player_live_api.php'
+        data = {
+            'bid': self.data.BID,
+            'bno': self.data.BNO,
+            'type': 'live',
+            'confirm_adult': 'false',
+            'player_type': 'html5',
+            'mode': 'landing',
+            'from_api': '0',
+            'pwd': '',
+            'stream_type': 'common',
+            'quality': 'HD'}
+        try:
+            response = post(f'{url}?bjid={self.data.BID}', data=data)
+            res = response.json()
+        except Exception as e:
+            asyncio.create_task(DiscordWebhookSender._log_error(f"error get player live {str(e)}"))
+            return None, None, None, None, None, None, None, None
+        live = res["CHANNEL"]["RESULT"]
+        title = res["CHANNEL"]["TITLE"]
 
-# async def main():
-    # init = base.initVar()
-    # afreecaID = ""
-    # chat = AfreecaChat(init, afreecaID)
+        adult_channel_state = -6
+        if live == adult_channel_state:  # 연령제한 체널로 썸네일링크 못 읽을 경우
+            thumbnail_url = f"https://liveimg.afreecatv.com/m/{self.data.BNO}"
+            return live, title, thumbnail_url, None, None, None, None, None
+        if live:
+            try: int(res['CHANNEL']['BNO'])
+            except: 
+                asyncio.create_task(DiscordWebhookSender._log_error(f"error res['CHANNEL']['BNO'] None"))
 
-    # parser = argparse.ArgumentParser()
-    # parser.add_argument('--streamer_id', type=str, default='charmel')
-    # args = parser.parse_args()
+            thumbnail_url = f"https://liveimg.afreecatv.com/m/{res['CHANNEL']['BNO']}"
 
-#     while True:
-#         await chat.connect_to_chat(init)
+            CHDOMAIN = res["CHANNEL"]["CHDOMAIN"].lower()
+            CHATNO = res["CHANNEL"]["CHATNO"]
+            FTK = res["CHANNEL"]["FTK"]
+            BJID = res["CHANNEL"]["BJID"]
+            CHPT = str(int(res["CHANNEL"]["CHPT"]) + 1)
+        else:
+            title = None
+            thumbnail_url = None
+            CHDOMAIN = None
+            CHATNO = None
+            FTK = None
+            BJID = None
+            CHPT = None
 
-# if __name__ == "__main__":
-#     asyncio.run(main())
+        return live, title, thumbnail_url, CHDOMAIN, CHATNO, FTK, BJID, CHPT
+

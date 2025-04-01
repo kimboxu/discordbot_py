@@ -1,117 +1,88 @@
 import asyncio
-from os import environ
 from datetime import datetime
-from supabase import create_client
-from discord_webhook_sender import DiscordWebhookSender
-from base import getChzzkHeaders, getChzzkCookie, changeUTCtime, get_message, chzzkVideoData, iconLinkData
+from discord_webhook_sender import DiscordWebhookSender, get_list_of_urls
+from base import changeUTCtime, get_message, chzzkVideoData, iconLinkData, initVar
 
 class chzzk_video:
-    def __init__(self, init_var):
+    def __init__(self, init_var: initVar, chzzk_id):
         self.DO_TEST = init_var.DO_TEST
+        self.supabase = init_var.supabase
         self.chzzkIDList = init_var.chzzkIDList
         self.chzzk_video = init_var.chzzk_video
         self.userStateData = init_var.userStateData
-        self.chzzkID = ""
+        self.chzzk_id = chzzk_id
         self.data = chzzkVideoData()
 
-
-    async def chzzk_video_msg(self):
+    async def start(self):
         await self.check_chzzk_video()
         await self.post_chzzk_video()
 
     async def check_chzzk_video(self):
-        def getChzzkDataList():
-            headers = getChzzkHeaders()
-            cookie = getChzzkCookie()
-        
-            return [
-                [(f"https://api.chzzk.naver.com/service/v1/channels/{self.chzzkIDList.loc[chzzkID, 'channel_code']}/videos", headers, cookie), chzzkID] 
-                for chzzkID in self.chzzkIDList["channelID"]
-            ]
-        
-        list_of_stateData_chzzkID = None
-        for _ in range(10):
-            try:
-                list_of_stateData_chzzkID = await get_message(getChzzkDataList(), "chzzk")
-                break
-            except:
-                await asyncio.sleep(0.05)
-        
-        if not list_of_stateData_chzzkID:
-            return
-        
-        for stateData_chzzkID in list_of_stateData_chzzkID:
-            for stateData, chzzkID, should_process in stateData_chzzkID:
-                if not self._should_process_video(stateData, should_process):
-                    continue
+        try:
+            def get_link(uid):
+                return f"https://api.chzzk.naver.com/service/v1/channels/{uid}/videos"
+            
+            uid = self.chzzkIDList.loc[self.chzzk_id, 'channel_code']
+            stateData = await get_message("chzzk", get_link(uid))
 
-                try:
-                    await self._process_video_data(stateData, chzzkID)
-                except Exception as e:
-                    asyncio.create_task(DiscordWebhookSender._log_error(f"error get stateData chzzk video.{chzzkID}.{e}."))
+            if not self._should_process_video(stateData):
+                return
+            
+            await self._process_video_data(stateData)
 
-    def _should_process_video(self, stateData, should_process):
-        return should_process and stateData["code"] == 200
+        except Exception as e:
+            asyncio.create_task(DiscordWebhookSender._log_error(f"error get stateData chzzk video.{self.chzzk_id}.{e}."))
 
-    async def _process_video_data(self, stateData, chzzkID):
+    def _should_process_video(self, stateData):
+        return stateData and stateData["code"] == 200
+
+    async def _process_video_data(self, stateData):
         videoNo, videoTitle, publishDate, thumbnailImageUrl, _ = self.getChzzkState(stateData)
         
-        # 이미 처리된 비디오 건너뛰기
-        a=self.chzzk_video.loc[chzzkID, 'VOD_json']["publishDate"]
-        b= self.chzzk_video.loc[chzzkID, 'VOD_json'].values()
-        if (publishDate <= self.chzzk_video.loc[chzzkID, 'VOD_json']["publishDate"] or 
-            videoNo in self.chzzk_video.loc[chzzkID, 'VOD_json'].values()):
+        if self.check_new_video(videoNo, publishDate, thumbnailImageUrl):
             return
+        # 비디오 데이터 처리 및 저장
+        json_data = self.getChzzk_video_json(stateData)
+        self.data.video_alarm_List.append((json_data, videoTitle))
+        await self.chzzk_saveVideoData(videoNo, publishDate)
+
+    def check_new_video(self, videoNo, publishDate, thumbnailImageUrl):
+        # 이미 처리된 비디오 건너뛰기
+        old_publishDate = self.chzzk_video.loc[self.chzzk_id, 'VOD_json']["publishDate"]
+        videoNo_list = self.chzzk_video.loc[self.chzzk_id, 'VOD_json']["videoNo_list"]
+
+        if (publishDate <= old_publishDate or 
+            videoNo in videoNo_list):
+            return True
 
         # 썸네일 URL 검증
         if not thumbnailImageUrl or "https://video-phinf.pstatic.net" not in thumbnailImageUrl:
-            await asyncio.sleep(1)
-            return
-
-        # 비디오 데이터 처리 및 저장
-        json_data = self.getChzzk_video_json(chzzkID, stateData)
-        self.data.video_alarm_List.append((chzzkID, json_data, videoTitle))
-        await self.chzzk_saveVideoData(chzzkID, videoNo, videoTitle, publishDate)
+            return True
  
     async def post_chzzk_video(self):
-        def ifAlarm(discordWebhookURL):
-            return (self.userStateData["치지직 VOD"][discordWebhookURL] and 
-                    self.chzzkIDList.loc[chzzkID, 'channelName'] in self.userStateData["치지직 VOD"][discordWebhookURL])
-        
-        def make_list_of_urls(json_data):
-            if self.DO_TEST:
-                return [(environ['errorPostBotURL'], json_data)]
-                # return []
-
-            return [
-                (discordWebhookURL, json_data)
-                for discordWebhookURL in self.userStateData['discordURL']
-                if ifAlarm(discordWebhookURL)
-            ]
-        
         try:
             if not self.data.video_alarm_List:
                 return
             
-            chzzkID, json_data, videoTitle = self.data.video_alarm_List.pop(0)
-            channel_name = self.chzzkIDList.loc[chzzkID, 'channelName']
-            print(f"{datetime.now()} VOD upload {channel_name} {videoTitle}")
+            for json_data, videoTitle in self.data.video_alarm_List:
+                channel_name = self.chzzkIDList.loc[self.chzzk_id, 'channelName']
+                print(f"{datetime.now()} VOD upload {channel_name} {videoTitle}")
 
-            asyncio.create_task(DiscordWebhookSender().send_messages(make_list_of_urls(json_data)))
-            # await async_post_message(make_list_of_urls(json_data))
+                list_of_urls = get_list_of_urls(self.DO_TEST, self.userStateData, channel_name, self.chzzk_id, json_data, "치지직 VOD")
+                asyncio.create_task(DiscordWebhookSender().send_messages(list_of_urls))
 
         except Exception as e:
             asyncio.create_task(DiscordWebhookSender._log_error(f"postLiveMSG {e}"))
             self.data.video_alarm_List.clear()
 
-    def getChzzk_video_json(self, chzzkID, stateData):
+    def getChzzk_video_json(self, stateData):
         videoNo, videoTitle, publishDate, thumbnailImageUrl, videoCategoryValue = self.getChzzkState(stateData)
         
         videoTitle = "|" + (videoTitle if videoTitle != " " else "                                                  ") + "|"
         
-        channel_data = self.chzzkIDList.loc[chzzkID]
+        channel_data = self.chzzkIDList.loc[self.chzzk_id]
         username = channel_data['channelName']
-        avatar_url = channel_data['channel_thumbnail']
+        avatar_url = channel_data['profile_image']
         video_url = f"https://chzzk.naver.com/{channel_data['channel_code']}/video"
         
         embed = {
@@ -160,29 +131,26 @@ class chzzk_video:
             data["thumbnailImageUrl"],
             data["videoCategoryValue"]
         )
-    async def chzzk_saveVideoData(self, chzzkID, videoNo, videoTitle, publishDate): #save profile data
+    
+    async def chzzk_saveVideoData(self, videoNo, publishDate): #save profile data
         idx = {chzzk: i for i, chzzk in enumerate(self.chzzk_video["channelID"])}
-        supabase = create_client(environ['supabase_url'], environ['supabase_key'])
         for _ in range(3):
             try:
-                chzzk_video_json = self.chzzk_video.loc[chzzkID, 'VOD_json']
+                self._update_videoNo_list(self.chzzk_video.loc[self.chzzk_id, 'VOD_json'], videoNo)
+                self.chzzk_video.loc[self.chzzk_id, 'VOD_json']["publishDate"] = publishDate
 
-                chzzk_video_json["videoTitle3"] = chzzk_video_json["videoTitle2"]
-                chzzk_video_json["videoTitle2"] = chzzk_video_json["videoTitle1"]
-                chzzk_video_json["videoTitle1"] = videoTitle
-
-                chzzk_video_json["videoNo3"] 	= chzzk_video_json["videoNo2"]
-                chzzk_video_json["videoNo2"] 	= chzzk_video_json["videoNo1"]
-                chzzk_video_json["videoNo1"] 	= videoNo
-
-                chzzk_video_json["publishDate"] = publishDate
-
-                
-                supabase.table('chzzk_video').upsert({
-                    "idx": idx[chzzkID],
-                    'VOD_json': self.chzzk_video.loc[chzzkID, 'VOD_json']
+                self.supabase.table('chzzk_video').upsert({
+                    "idx": idx[self.chzzk_id],
+                    'VOD_json': self.chzzk_video.loc[self.chzzk_id, 'VOD_json']
                 }).execute()
                 break
             except Exception as e:
                 asyncio.create_task(DiscordWebhookSender._log_error(f"error saving profile data {e}"))
                 await asyncio.sleep(0.5)
+
+    def _update_videoNo_list(self, chzzk_video_json, videoNo):
+        if len(chzzk_video_json["videoNo_list"]) >= 10:
+            chzzk_video_json["videoNo_list"][:-1] = chzzk_video_json["videoNo_list"][1:]
+            chzzk_video_json["videoNo_list"][-1] = videoNo
+        else:
+            chzzk_video_json["videoNo_list"].append(videoNo)

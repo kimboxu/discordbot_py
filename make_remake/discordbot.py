@@ -14,23 +14,26 @@ from getCafePostTitle import getCafePostTitle
 from getYoutubeJsonData import getYoutubeJsonData
 from discord_webhook_sender import DiscordWebhookSender
 
+from live_message import ChzzkLiveMessage, AfreecaLiveMessage
+
     
 async def main_loop(init: base.initVar):
-    supabase = create_client(environ['supabase_url'], environ['supabase_key'])
-    c_chzzk_live_message = chzzk_live_message(init)
-    c_afreeca_live_message = afreeca_live_message(init)
-    c_chzzk_video = chzzk_video(init)
 
     while True:
         try:
-            if init.count % 2 == 0: await base.userDataVar(init, supabase)
+            if init.count % 2 == 0: await base.userDataVar(init)
 
-            cafe_tasks = [asyncio.create_task(getCafePostTitle(init).start(channel_id)) for channel_id in init.cafeData["channelID"]]
+            cafe_tasks = [asyncio.create_task(getCafePostTitle(init, channel_id).start()) for channel_id in init.cafeData["channelID"]]
+            chzzk_video_tasks = [asyncio.create_task(chzzk_video(init, channel_id).start()) for channel_id in init.chzzkIDList["channelID"]]
+            chzzk_live_tasks = [asyncio.create_task(chzzk_live_message(init, channel_id).start()) for channel_id in init.chzzkIDList["channelID"]]
+            afreeca_live_tasks = [asyncio.create_task(afreeca_live_message(init, channel_id).start()) for channel_id in init.afreecaIDList["channelID"]]
+            # chzzk_live_tasks = [asyncio.create_task(ChzzkLiveMessage(init, channel_id).start()) for channel_id in init.chzzkIDList["channelID"]]
+            # afreeca_live_tasks = [asyncio.create_task(AfreecaLiveMessage(init, channel_id).start()) for channel_id in init.afreecaIDList["channelID"]]
             
             tasks = [
-                asyncio.create_task(c_chzzk_live_message.chzzk_liveMsg()),
-                asyncio.create_task(c_afreeca_live_message.afreeca_liveMsg()),
-                asyncio.create_task(c_chzzk_video.chzzk_video_msg()),
+                *chzzk_live_tasks,
+                *afreeca_live_tasks,
+                *chzzk_video_tasks,
                 *cafe_tasks
             ]
 
@@ -79,10 +82,9 @@ async def afreeca_chatf(init: base.initVar):
         except Exception as e: print(f"{datetime.now()} error afreeca_chatf {e}");await asyncio.sleep(1)
         
 async def main():
-    supabase = create_client(environ['supabase_url'], environ['supabase_key'])
     init = base.initVar()
     await base.discordBotDataVars(init)
-    await base.userDataVar(init, supabase)
+    await base.userDataVar(init)
     await asyncio.sleep(1)
     
     test = [

@@ -2,303 +2,265 @@ import base
 import asyncio
 from json import loads
 from datetime import datetime
-from requests import post, get
+from requests import post
 from os import remove, environ
 from urllib.request import urlretrieve
-from discord_webhook_sender import DiscordWebhookSender
+from discord_webhook_sender import DiscordWebhookSender, get_list_of_urls
 
 class afreeca_live_message():
-	def __init__(self, init_var: base.initVar):
+	def __init__(self, init_var: base.initVar, channel_id):
 		self.init = init_var
 		self.DO_TEST = init_var.DO_TEST
+		self.supabase = init_var.supabase
 		self.userStateData = init_var.userStateData
 		self.afreecaIDList = init_var.afreecaIDList
 		self.afreeca_titleData = init_var.afreeca_titleData
-		self.afreecaID = ""
-		self.data = base.afreecaLiveData()
+		self.channel_id = channel_id
+		self.data = base.LiveData()
 
-	async def afreeca_liveMsg(self):
+	async def start(self):
 		await self.addMSGList()
-		await self.postLiveMSG()
+		await self.postLive_massge()
 
 	async def addMSGList(self):
-		for _ in range(10):
-			try:
-				list_of_offState_afreecaID = await base.get_message(self.getAfreecaDataList(), "afreeca")
-				break
-			except:
-				await asyncio.sleep(0.1)
+
 		try:
-			for offState_afreecaID in list_of_offState_afreecaID:
-				for offState, user_id, should_process in offState_afreecaID:
-					if not should_process: continue
+			state_data = await self._get_state_data()
+			
+			if not self._is_valid_state_data(state_data):
+				return
+			
+			self._update_title_if_needed()
 
-					if base.if_after_time(self.data.change_title_time) and self.afreeca_titleData.loc[user_id,'title2'] != self.afreeca_titleData.loc[user_id,'title1']:
-						self.afreeca_titleData.loc[user_id,'title2'] = self.afreeca_titleData.loc[user_id,'title1']
-					
-					if not self._is_valid_station_data(offState):
-						continue
+			# 스트림 데이터 얻기
+			stream_data = self._get_stream_data(state_data)
+			self._update_stream_info(stream_data, state_data)
 
-					stream_data = base.afreeca_getChannelOffStateData(
-						offState,
-						self.afreecaIDList.loc[user_id, "afreecaID"],
-						self.afreecaIDList.loc[user_id, 'channel_thumbnail']
-					)
-					live, title, thumbnail_url = stream_data
-
-					if self._should_process_online_status(live, title, user_id, offState):
-						await self._handle_online_status(offState, user_id, live, title, thumbnail_url)
-
-					elif self._should_process_offline_status(live, user_id):
-						await self._handle_offline_status(user_id, title, thumbnail_url)
+			# 온라인/오프라인 상태 처리
+			if self._should_process_online_status():
+				await self._handle_online_status(state_data)
+			elif self._should_process_offline_status():
+				await self._handle_offline_status()
 
 		except Exception as e:
-			asyncio.create_task(DiscordWebhookSender._log_error(f"error get stateData afreeca live .{user_id}.{e}.{offState}"))
-			if  -1 not in [str(offState).find("Error"), str(offState).find("error")]:
+			asyncio.create_task(DiscordWebhookSender._log_error(f"error get state_data afreeca live .{self.channel_id}.{e}.{state_data}"))
+			if  -1 not in [str(state_data).find("Error"), str(state_data).find("error")]:
 				len(1)
 
-	def _is_valid_station_data(self, offState):
+	def _is_valid_state_data(self, state_data):
 		try:
-			offState["station"]["user_id"]
+			state_data["station"]["user_id"]
 			return True
 		except:
 			return False
 			
-	def _should_process_online_status(self, live, title, user_id, offState):
-		return ((self.turnOnline(live, user_id, offState) or 
-				(title and self.ifChangeTitle(title, user_id))) and 
+	async def _get_state_data(self):
+		return await base.get_message(
+			"afreeca", 
+			base.afreeca_getLink(self.afreecaIDList.loc[self.channel_id, "afreecaID"])
+		)
+
+	def _update_title_if_needed(self):
+		if (base.if_after_time(self.data.change_title_time) and 
+	  		(self.afreeca_titleData.loc[self.channel_id,'title2'] != self.afreeca_titleData.loc[self.channel_id,'title1'])):
+			self.afreeca_titleData.loc[self.channel_id,'title2'] = self.afreeca_titleData.loc[self.channel_id,'title1']
+
+	def _get_stream_data(self, state_data):
+		return base.afreeca_getChannelOffStateData(
+			state_data,
+			self.afreecaIDList.loc[self.channel_id, "afreecaID"],
+			self.afreecaIDList.loc[self.channel_id, 'profile_image']
+		)
+
+	def _update_stream_info(self, stream_data, state_data):
+		self.update_broad_no(state_data)
+		self.data.start_at["openDate"] = state_data["station"]["broad_start"]
+		self.data.live, self.data.title, self.data.profile_image = stream_data
+		self.afreecaIDList.loc[self.channel_id, 'profile_image'] = self.data.profile_image
+
+	def _should_process_online_status(self):
+		return ((self.turnOnline() or 
+				(self.data.title and self.ifChangeTitle())) and 
 				base.if_after_time(self.data.LiveCountEnd, sec = 15))
 
-	def _should_process_offline_status(self, live, user_id):
-		return (self.turnOffline(live, user_id) and
+	def _should_process_offline_status(self):
+		return (self.turnOffline() and
 		  		base.if_after_time(self.data.LiveCountStart, sec = 15))
 
-	async def _handle_online_status(self, offState, user_id, live, title, thumbnail_url):
-		message = self.getMessage(live, user_id, offState)
-		json = await self.getOnAirJson(user_id, message, thumbnail_url, title, offState)
+	async def _handle_online_status(self, state_data):
+		message = self.getMessage()
+		json_data = await self.getOnAirJson(message, state_data)
 		
-		self.onLineTime(offState, user_id, message)
-		self.onLineTitle(title, user_id, message)
+		self.onLineTime(message)
+		self.onLineTitle(message)
 		
-		old_title = self.afreeca_titleData.loc[user_id,'title2']
-		self.data.livePostList.append((user_id, message, title, old_title, json))
+		self.data.livePostList.append((message, json_data))
 		
-		await base.save_airing_data(self.init, 'afreeca', user_id)
-		await base.save_profile_data(self.init, 'afreeca', user_id)
-		
-		self.data.LiveCountStart = datetime.now().isoformat()
+		await base.save_profile_data(self.afreecaIDList, 'afreeca', self.supabase)
+
+		if message == "뱅온!": 
+			self.data.LiveCountStart = datetime.now().isoformat()
 		self.data.change_title_time = datetime.now().isoformat()
 
-	async def _handle_offline_status(self, user_id, title, thumbnail_url):
+	async def _handle_offline_status(self):
 		message = "뱅종"
-		self.afreecaIDList.loc[user_id, 'channel_thumbnail'] = thumbnail_url
-		json = self.getOffJson(user_id)
+		json_data = self.getOffJson()
 		
-		self.offLineTitle(user_id)
-		self.data.livePostList.append((user_id, message, title, None, json))
+		self.offLineTitle()
+
+		self.data.livePostList.append((message, json_data))
 		
-		await base.save_airing_data(self.init, 'afreeca', user_id)
 		self.data.LiveCountEnd = datetime.now().isoformat()
 		self.data.change_title_time = datetime.now().isoformat()
+
+	def update_broad_no(self, state_data):
+		if state_data["broad"] and state_data["broad"]["broad_no"] != self.afreeca_titleData.loc[self.channel_id, 'chatChannelId']:
+			self.afreeca_titleData.loc[self.channel_id, 'oldChatChannelId'] = self.afreeca_titleData.loc[self.channel_id, 'chatChannelId']
+			self.afreeca_titleData.loc[self.channel_id, 'chatChannelId'] = state_data["broad"]["broad_no"]
 	
-	async def postLiveMSG(self):
+	def _get_channel_name(self):
+		return self.afreecaIDList.loc[self.channel_id, 'channelName']
+
+	async def postLive_massge(self):
 		try:
 			if not self.data.livePostList:
 				return
-			user_id, message, title, old_title, json = self.data.livePostList.pop(0)
-			channel_name = self.afreecaIDList.loc[user_id, 'channelName']
+			message, json_data = self.data.livePostList.pop(0)
+			channel_name = self._get_channel_name()
 
-			if message in ["뱅온!", "방제 변경"]:
-				print(f"{datetime.now()} onLine {channel_name} {message}")
-				if message == "방제 변경":
-					print(f"{datetime.now()} 이전 방제: {old_title}")
-					print(f"{datetime.now()} 현재 방제: {title}")
+			db_name = self._get_db_name(message)
+			self._log_message(message, channel_name)
 
-				list_of_urls = self.make_online_list_of_urls(user_id, message, json)
-				asyncio.create_task(DiscordWebhookSender().send_messages(list_of_urls))
-				# asyncio.create_task(base.async_post_message(list_of_urls))
-			if message in ["뱅종"]:
-				print(f"{datetime.now()} offLine {channel_name}")
-				list_of_urls = self.make_offline_list_of_urls(user_id, json)
-				asyncio.create_task(DiscordWebhookSender().send_messages(list_of_urls))
-				# asyncio.create_task(base.async_post_message(list_of_urls))
+			list_of_urls = get_list_of_urls(self.DO_TEST, self.userStateData, channel_name, self.channel_id, json_data, db_name)
+			asyncio.create_task(DiscordWebhookSender().send_messages(list_of_urls))
+
+			await base.save_airing_data(self.afreeca_titleData, 'afreeca', self.supabase)
+
 		except Exception as e:
 			asyncio.create_task(DiscordWebhookSender._log_error(f"postLiveMSG {e}"))
 			self.data.livePostList.clear()
 
-	def getAfreecaDataList(self):
-		headers = base.getChzzkHeaders()
-
-		return [[(afreeca_getLink(self.afreecaIDList.loc[user_id, "afreecaID"]), headers), user_id] for user_id in self.afreecaIDList["channelID"]]
-
-	def make_online_list_of_urls(self, user_id, message, json):
-		if self.DO_TEST:
-			return [(environ['errorPostBotURL'], json)]
-		
-		return [
-			(discordWebhookURL, json) 
-			for discordWebhookURL in self.userStateData['discordURL']
-			if self.ifAlarm(discordWebhookURL, user_id, message)
-		]
-
-	def make_offline_list_of_urls(self, user_id, json):
-		if self.DO_TEST:
-			return [(environ['errorPostBotURL'], json)]
-		else:
-			return [(discordWebhookURL, json) for discordWebhookURL in self.userStateData['discordURL'] if self.ifOffAlarm(user_id, discordWebhookURL)]
-
-	def onLineTitle(self, title, user_id, message): #change title. state to online
-		if message == "뱅온!": self.afreeca_titleData.loc[user_id,'live_state'] = "OPEN"
-		self.afreeca_titleData.loc[user_id,'title2'] = self.afreeca_titleData.loc[user_id,'title1']
-		self.afreeca_titleData.loc[user_id,'title1'] = title
-
-	def onLineTime(self, offState, user_id, message): #change time. state to online
-		if message == "뱅온!": 
-			self.afreeca_titleData.loc[user_id,'update_time'] = self.getStarted_at(offState)
-
-	def offLineTitle(self, user_id): self.afreeca_titleData.loc[user_id,'live_state'] = "CLOSE" # change state to offline  
-
-	def offLineTime(self, user_id, offState): 
-		self.afreeca_titleData.loc[user_id,'update_time'] = self.getStarted_at(offState) # change state to offline  
-
-	def ifAlarm(self, discordWebhookURL, user_id, message): #if user recv to online Alarm
-		if message == "뱅온!": 
-			return self.userStateData["뱅온 알림"][discordWebhookURL] and self.afreecaIDList.loc[user_id, 'channelName'] in self.userStateData["뱅온 알림"][discordWebhookURL]
-		else: 
-			return self.userStateData[f"방제 변경 알림"][discordWebhookURL] and self.afreecaIDList.loc[user_id, 'channelName'] in self.userStateData[f"방제 변경 알림"][discordWebhookURL]
-
-	def ifChangeTitle(self, title, user_id):
-		return title not in [str(self.afreeca_titleData.loc[user_id,'title1']), str(self.afreeca_titleData.loc[user_id,'title2'])] #if title change
+	def _get_db_name(self, message):
+		"""메시지에 맞는 DB 이름 반환"""
+		if message == "뱅온!":
+			return "뱅온 알림"
+		elif message == "방제 변경":
+			return "방제 변경 알림"
+		elif message == "뱅종":
+			return "방종 알림"
+		return "알림"
 	
-	def ifOffAlarm(self, user_id, discordWebhookURL):
-		try: return self.afreecaIDList.loc[user_id, 'channelName'] in self.userStateData["방종 알림"][discordWebhookURL] #if offline Alarm
-		except: return False
+	def _log_message(self, message, channel_name):
+		"""메시지 로깅"""
+		now = datetime.now()
+		if message == "뱅온!":
+			print(f"{now} onLine {channel_name} {message}")
+		elif message == "방제 변경":
+			old_title = self._get_old_title()
+			print(f"{now} onLine {channel_name} {message}")
+			print(f"{now} 이전 방제: {old_title}")
+			print(f"{now} 현재 방제: {self.data.title}")
+		elif message == "뱅종":
+			print(f"{now} offLine {channel_name}")
 
-	async def getOnAirJson(self, user_id, message, thumbnail_url, title, offState):
-		self.afreecaIDList.loc[user_id, 'channel_thumbnail'] = thumbnail_url
-		started_at, thumbnail, url, viewer_count = await self.getJsonVars(user_id, offState)
-		# if message=="뱅온!":
-		return self.get_online_state_json(user_id, message, title, url, started_at, thumbnail, viewer_count)
-		# return self.get_online_titleChange_state_json(user_id, message, title, url, started_at, thumbnail)
+	def _get_old_title(self):
+		return self.afreeca_titleData.loc[self.channel_id,'title2']
 
-	async def getJsonVars(self, user_id, offState):
-		def getURL(afreecaID, bno):
-			return f"https://play.sooplive.co.kr/{afreecaID}/{bno}" #get channel URL
-		
-		for count in range(100):
-			try:
-				if not offState or 'broad' not in offState:
-					print(f"{datetime.now()} Invalid offState for {user_id}, retrying...")
-					try:
-						response = get(
-							afreeca_getLink(self.afreecaIDList.loc[user_id, "afreecaID"]), 
-							headers=base.getChzzkHeaders(), 
-							timeout=3
-						)
-						offState = loads(response.text)
-						if not offState or 'broad' not in offState:
-							await asyncio.sleep(0.05)
-							continue
-					except Exception as e:
-						print(f"{datetime.now()} Failed to fetch new offState: {e}")
-						await asyncio.sleep(0.05)
-						continue
+	def onLineTitle(self, message): #change title. state to online
+		if message == "뱅온!": self.afreeca_titleData.loc[self.channel_id,'live_state'] = "OPEN"
+		self.afreeca_titleData.loc[self.channel_id,'title2'] = self.afreeca_titleData.loc[self.channel_id,'title1']
+		self.afreeca_titleData.loc[self.channel_id,'title1'] = self.data.title
 
-				if offState["broad"]["broad_no"] != self.afreeca_titleData.loc[user_id, 'chatChannelId']:
-					self.afreeca_titleData.loc[user_id, 'oldChatChannelId'] = self.afreeca_titleData.loc[user_id, 'chatChannelId']
-					self.afreeca_titleData.loc[user_id, 'chatChannelId'] = offState["broad"]["broad_no"]
+	def onLineTime(self, message): #change time. state to online
+		if message == "뱅온!": 
+			self.afreeca_titleData.loc[self.channel_id,'update_time'] = self.getStarted_at("openDate")
 
-				_, _, thumbnailLink, _, _, _, _, _ = afreeca_getChannelStateData(self.afreeca_titleData.loc[user_id, 'chatChannelId'],self.afreecaIDList.loc[user_id, "afreecaID"])
-				url = getURL(self.afreecaIDList.loc[user_id, "afreecaID"], self.afreeca_titleData.loc[user_id, 'chatChannelId'])
-				started_at   = self.getStarted_at(offState)
-				viewer_count = offState['broad']['current_sum_viewer']
+	def offLineTitle(self): self.afreeca_titleData.loc[self.channel_id,'live_state'] = "CLOSE" # change state to offline  
 
-				try:	
-					thumbnail = self.getThumbnail(user_id, thumbnailLink)
-					if thumbnail is None: 
-						print(f"{datetime.now()} wait make thumbnail 1 .{str(thumbnailLink)}")
-						if count % 20 == 0: offState = loads(get(afreeca_getLink(self.afreecaIDList.loc[user_id, "afreecaID"]), headers=base.getChzzkHeaders(), timeout=3).text)
-						await asyncio.sleep(0.05)
-						continue
-					break
-				except Exception as e:
-					asyncio.create_task(DiscordWebhookSender._log_error(f"{datetime.now()} wait make thumbnail 2 {e}.{str(thumbnailLink)}"))
-					if count % 20 == 0: offState = loads(get(afreeca_getLink(self.afreecaIDList.loc[user_id, "afreecaID"]), headers=base.getChzzkHeaders(), timeout=3).text)
-					await asyncio.sleep(0.05)
+	def ifChangeTitle(self):
+		return self.data.title not in [str(self.afreeca_titleData.loc[self.channel_id,'title1']), str(self.afreeca_titleData.loc[self.channel_id,'title2'])] #if title change
 
-			except Exception as e: 
-				asyncio.create_task(DiscordWebhookSender._log_error(f"error getJsonVars {user_id}.{e}"))
+	async def getOnAirJson(self, message, state_data):
+		channel_url  = self.get_channel_url()
+		started_at   = self.getStarted_at("openDate")
+		viewer_count = self.getViewer_count(state_data)
+		thumbnail = await self.get_live_thumbnail_image(state_data)
+
+		return self.get_online_state_json(message, channel_url, started_at, thumbnail, viewer_count)
+
+	async def get_live_thumbnail_image(self, state_data):
+		for count in range(20):
+			thumbnail_image = self.get_thumbnail_image()
+			if thumbnail_image is None: 
+				print(f"{datetime.now()} wait make thumbnail 1 .{str(self.getImageURL(state_data))}")
 				await asyncio.sleep(0.05)
+				continue
+			break
+		else: thumbnail_image = ""
 
-		else: thumbnail = ""
+		return thumbnail_image
 
-		return started_at, thumbnail, url, viewer_count
-
-	def get_online_state_json(self, user_id, message, title, url, started_at, thumbnail, viewer_count):
-		return {"username": self.afreecaIDList.loc[user_id, 'channelName'], "avatar_url": self.afreecaIDList.loc[user_id, 'channel_thumbnail'],\
+	def get_online_state_json(self, message, url, started_at, thumbnail, viewer_count):
+		return {"username": self._get_channel_name(), "avatar_url": self.afreecaIDList.loc[self.channel_id, 'profile_image'],\
 				"embeds": [
-					{"color": int(self.afreecaIDList.loc[user_id, 'channel_color']),
+					{"color": int(self.afreecaIDList.loc[self.channel_id, 'channel_color']),
 					"fields": [
-						{"name": "방제", "value": title, "inline": True},
+						{"name": "방제", "value": self.data.title, "inline": True},
 						{"name": ':busts_in_silhouette: 시청자수',
 						"value": viewer_count, "inline": True}],
-					"title":  f"{self.afreecaIDList.loc[user_id, 'channelName']} {message}\n",\
+					"title":  f"{self._get_channel_name()} {message}\n",\
 				"url": url, \
 				"image": {"url": thumbnail},
 				"footer": { "text": f"뱅온 시간", "inline": True, "icon_url": base.iconLinkData().soop_icon },
 				"timestamp": base.changeUTCtime(started_at)}]}
 	
-	def get_online_titleChange_state_json(self, user_id, message, title, url, started_at, thumbnail):
-		return {"username": self.afreecaIDList.loc[user_id, 'channelName'], "avatar_url": self.afreecaIDList.loc[user_id, 'channel_thumbnail'],\
-				"embeds": [
-					{"color": int(self.afreecaIDList.loc[user_id, 'channel_color']),
-					"fields": [
-						{"name": "이전 방제", "value": str(self.afreeca_titleData.loc[user_id,'title1']), "inline": True},
-						{"name": "현재 방제", "value": title, "inline": True}],
-					"title":  f"{self.afreecaIDList.loc[user_id, 'channelName']} {message}\n",\
-				"url": url, \
-				"image": {"url": thumbnail},
-				"footer": { "text": f"뱅온 시간", "inline": True, "icon_url": base.iconLinkData().soop_icon },
-				"timestamp": base.changeUTCtime(started_at)}]}
+	# def get_online_titleChange_state_json(self, message, title, url, started_at, thumbnail):
+	# 	return {"username": self._get_channel_name(), "avatar_url": self.afreecaIDList.loc[self.channel_id, 'profile_image'],\
+	# 			"embeds": [
+	# 				{"color": int(self.afreecaIDList.loc[self.channel_id, 'channel_color']),
+	# 				"fields": [
+	# 					{"name": "이전 방제", "value": str(self.afreeca_titleData.loc[self.channel_id,'title1']), "inline": True},
+	# 					{"name": "현재 방제", "value": title, "inline": True}],
+	# 				"title":  f"{self._get_channel_name()} {message}\n",\
+	# 			"url": url, \
+	# 			"image": {"url": thumbnail},
+	# 			"footer": { "text": f"뱅온 시간", "inline": True, "icon_url": base.iconLinkData().soop_icon },
+	# 			"timestamp": base.changeUTCtime(started_at)}]}
 
-	def getOffJson(self, user_id): #offJson
-		return {"username": self.afreecaIDList.loc[user_id, 'channelName'], "avatar_url": self.afreecaIDList.loc[user_id, 'channel_thumbnail'],\
+	def getOffJson(self): #offJson
+		return {"username": self._get_channel_name(), "avatar_url": self.afreecaIDList.loc[self.channel_id, 'profile_image'],\
 				"embeds": [
-					{"color": int(self.afreecaIDList.loc[user_id, 'channel_color']),
-					"title":  self.afreecaIDList.loc[user_id, 'channelName'] +" 방송 종료\n",\
-				# "image": {"url": self.afreecaIDList.loc[user_id, 'offLine_thumbnail']}
+					{"color": int(self.afreecaIDList.loc[self.channel_id, 'channel_color']),
+					"title":  self._get_channel_name() +" 방송 종료\n",\
+				# "image": {"url": self.afreecaIDList.loc[self.channel_id, 'offLine_thumbnail']}
 				}]}
 
-	def getChatFilterName(self, name):
-		[channelName] = [self.chatFilter["channelName"][i] for i in range(len(list(self.chatFilter["channelID"]))) if self.chatFilter["channelID"][i] == name]
-		return channelName
+	def get_channel_url(self):
+		afreecaID = self.afreecaIDList.loc[self.channel_id, "afreecaID"]
+		bno = self.afreeca_titleData.loc[self.channel_id, 'chatChannelId']
+		return f"https://play.sooplive.co.kr/{afreecaID}/{bno}"
 
-	def getName(self, data): #get chat person's name 
-		try:	return data[data.index(":") + 1:data.index("!")]
-		except: return None
-
-	def getStarted_at(self, state_data): 
-		time_str = state_data["station"]["broad_start"]
-		if not time_str or time_str == '0000-00-00 00:00:00':
+	def getStarted_at(self, status: str): 
+		time_str = self.data.start_at[status]
+		if not time_str or time_str == '0000-00-00 00:00:00': 
 			return None
 		try:
-			time = datetime(int(time_str[:4]),int(time_str[5:7]),int(time_str[8:10]),int(time_str[11:13]),int(time_str[14:16]),int(time_str[17:19]))
-			# time = datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S")
+			time = datetime.strptime(time_str, '%Y-%m-%d %H:%M:%S')
 			return time.isoformat()
 		except ValueError:
 			return None
 
-	def getViewer_count(self, stateData):
-		return stateData['content']['concurrentUserCount'] #get viewer data
+	def getViewer_count(self, state_data):
+		return state_data['broad']['current_sum_viewer'] #get viewer data
 
-	def getMessage(self, live, user_id, offState): return "뱅온!" if (self.turnOnline(live, user_id, offState)) else "방제 변경" #turnOn or change title
+	def getMessage(self): return "뱅온!" if (self.turnOnline()) else "방제 변경" #turnOn or change title
 
-	def getThumbnail(self, user_id, thumbnailLink): #thumbnail shape do transformation able to send to discord
+	def get_thumbnail_image(self): #thumbnail shape do transformation able to send to discord
 		try:
-			urlretrieve(thumbnailLink, "explain.png")
+			self.saveImage()
 			file = {'file'      : open("explain.png", 'rb')}
-			data = {"username"  : self.afreecaIDList.loc[user_id, 'channelName'],
-					"avatar_url": self.afreecaIDList.loc[user_id, 'channel_thumbnail']}
+			data = {"username"  : self._get_channel_name(),
+					"avatar_url": self.afreecaIDList.loc[self.channel_id, 'profile_image']}
 			thumbnail  = post(environ['recvThumbnailURL'], files=file, data=data, timeout=3)
 			try: remove('explain.png')
 			except: pass
@@ -308,64 +270,17 @@ class afreeca_live_message():
 			return thumbnail[frontIndex:thumbnail.index(".png") + 4]
 		except:
 			return None
+	def saveImage(self, state_data): urlretrieve(self.getImageURL(state_data), "explain.png") # save thumbnail image to png
 
-	def turnOnline(self, live, user_id, stateData):
-		now_time = self.getStarted_at(stateData)
-		old_time = self.afreeca_titleData.loc[user_id,'update_time']
-		return live==1 and self.afreeca_titleData.loc[user_id,'live_state'] == "CLOSE" and now_time > old_time #turn online
+	def getImageURL(self) -> str:
+		return f"https://liveimg.afreecatv.com/m/{self.afreeca_titleData.loc[self.channel_id, 'chatChannelId']}"
 
-	def turnOffline(self, live, user_id):
-		# now_time = self.getStarted_at(stateData)
-		# old_time = self.afreeca_titleData.loc[user_id,'update_time']
-		return live==0 and self.afreeca_titleData.loc[user_id,'live_state'] == "OPEN" #turn offline
+	def turnOnline(self):
+		now_time = self.getStarted_at("openDate")
+		old_time = self.afreeca_titleData.loc[self.channel_id,'update_time']
+		return self.data.live == 1 and self.afreeca_titleData.loc[self.channel_id,'live_state'] == "CLOSE" and now_time > old_time #turn online
 
-def afreeca_getLink(afreecaID): return f"https://chapi.sooplive.co.kr/api/{afreecaID}/station"
-
-def afreeca_getChannelStateData(bno, bid):
-	url = 'https://live.sooplive.co.kr/afreeca/player_live_api.php'
-	data = {
-		'bid': bid,
-		'bno': bno,
-		'type': 'live',
-		'confirm_adult': 'false',
-		'player_type': 'html5',
-		'mode': 'landing',
-		'from_api': '0',
-		'pwd': '',
-		'stream_type': 'common',
-		'quality': 'HD'}
-	try:
-		response = post(f'{url}?bjid={bid}', data=data)
-		res = response.json()
-	except Exception as e:
-		asyncio.create_task(DiscordWebhookSender._log_error(f"error get player live {str(e)}"))
-		return None, None, None, None, None, None, None, None
-	live = res["CHANNEL"]["RESULT"]
-	title = res["CHANNEL"]["TITLE"]
-
-	adult_channel_state = -6
-	if live == adult_channel_state:  # 연령제한 체널로 썸네일링크 못 읽을 경우
-		thumbnail_url = f"https://liveimg.afreecatv.com/m/{bno}"
-		return live, title, thumbnail_url, None, None, None, None, None
-	if live:
-		try: int(res['CHANNEL']['BNO'])
-		except: 
-			asyncio.create_task(DiscordWebhookSender._log_error(f"error res['CHANNEL']['BNO'] None"))
-
-		thumbnail_url = f"https://liveimg.afreecatv.com/m/{res['CHANNEL']['BNO']}"
-
-		CHDOMAIN = res["CHANNEL"]["CHDOMAIN"].lower()
-		CHATNO = res["CHANNEL"]["CHATNO"]
-		FTK = res["CHANNEL"]["FTK"]
-		BJID = res["CHANNEL"]["BJID"]
-		CHPT = str(int(res["CHANNEL"]["CHPT"]) + 1)
-	else:
-		title = None
-		thumbnail_url = None
-		CHDOMAIN = None
-		CHATNO = None
-		FTK = None
-		BJID = None
-		CHPT = None
-
-	return live, title, thumbnail_url, CHDOMAIN, CHATNO, FTK, BJID, CHPT
+	def turnOffline(self):
+		# now_time = self.getStarted_at(state_data)
+		# old_time = self.afreeca_titleData.loc[self.channel_id,'update_time']
+		return self.data.live == 0 and self.afreeca_titleData.loc[self.channel_id,'live_state'] == "OPEN" #turn offline

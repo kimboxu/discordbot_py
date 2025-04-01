@@ -4,9 +4,10 @@ import asyncio
 import aiohttp
 from json import loads
 from queue import Queue
-from aiohttp import ClientSession, TCPConnector, ClientError
+from typing import Dict
 import pandas as pd
-from requests import post
+from requests import post, get
+from requests.exceptions import HTTPError, ReadTimeout, ConnectTimeout, SSLError
 from timeit import default_timer
 from dataclasses import dataclass, field
 from supabase import create_client
@@ -25,6 +26,7 @@ class initVar:
 	countTimeList.append(default_timer())	#nomal sleep time
 	SEC 			= 1000000  #every 100000 count rejoin
 	count 			= 0
+	supabase = create_client(environ['supabase_url'], environ['supabase_key'])
 
 	logging.getLogger('httpx').setLevel(logging.WARNING)
 	# 모든 로거의 레벨을 높이려면 다음과 같이 할 수 있습니다:
@@ -32,25 +34,18 @@ class initVar:
 	print("start!")
 	
 @dataclass
-class chzzkLiveData:
+class LiveData:
 	livePostList: list = field(default_factory=list)
-	change_title_time: str = '2024-01-01 00:00:00'
-	LiveCountStart: str = '2024-01-01 00:00:00'
-	LiveCountEnd: str = '2024-01-01 00:00:00'
-
-@dataclass
-class afreecaLiveData:
-	livePostList: list = field(default_factory=list)
-	change_title_time: str = '2024-01-01 00:00:00'
-	LiveCountStart: str = '2024-01-01 00:00:00'
-	LiveCountEnd: str = '2024-01-01 00:00:00'
-
-@dataclass
-class twitchLiveData:
-	livePostList: list = field(default_factory=list)
-	change_title_time: str = '2024-01-01 00:00:00'
-	LiveCountStart: str = '2024-01-01 00:00:00'
-	LiveCountEnd: str = '2024-01-01 00:00:00'
+	change_title_time: str = '2025-01-01 00:00:00'
+	LiveCountStart: str = '2025-01-01 00:00:00'
+	LiveCountEnd: str = '2025-01-01 00:00:00'
+	live: str = ""
+	title: str = ""
+	profile_image: str = ""
+	start_at: Dict[str, str] = field(default_factory=lambda: {
+		"openDate": "",
+		"closeDate": ""
+	})
 
 @dataclass
 class chzzkVideoData:
@@ -73,121 +68,121 @@ class iconLinkData:
 	cafe_icon: str = environ['CAFE_ICON']
 
 class AsyncLogger:
-    def __init__(self, bot_url, max_workers=3):
-        self.bot_url = bot_url
-        self.log_queue = Queue()
-        self.executor = ThreadPoolExecutor(max_workers=max_workers)
-        self.loop = asyncio.get_event_loop()
-        self._stop_event = asyncio.Event()
+	def __init__(self, bot_url, max_workers=3):
+		self.bot_url = bot_url
+		self.log_queue = Queue()
+		self.executor = ThreadPoolExecutor(max_workers=max_workers)
+		self.loop = asyncio.get_event_loop()
+		self._stop_event = asyncio.Event()
 
-    async def start_logging(self):
-        """로깅 프로세스 시작"""
-        self._stop_event.clear()
-        await self.loop.run_in_executor(
-            self.executor, 
-            self._process_log_queue
-        )
+	async def start_logging(self):
+		"""로깅 프로세스 시작"""
+		self._stop_event.clear()
+		await self.loop.run_in_executor(
+			self.executor, 
+			self._process_log_queue
+		)
 
-    def _process_log_queue(self):
-        """백그라운드 스레드에서 로그 큐 처리"""
-        while not self._stop_event.is_set():
-            try:
-                # 0.1초마다 큐 확인
-                if not self.log_queue.empty():
-                    message = self.log_queue.get(timeout=0.1)
-                    asyncio.run(self._send_log(message))
-            except Exception as e:
-                print(f"Logging queue processing error: {e}")
+	def _process_log_queue(self):
+		"""백그라운드 스레드에서 로그 큐 처리"""
+		while not self._stop_event.is_set():
+			try:
+				# 0.1초마다 큐 확인
+				if not self.log_queue.empty():
+					message = self.log_queue.get(timeout=0.1)
+					asyncio.run(self._send_log(message))
+			except Exception as e:
+				print(f"Logging queue processing error: {e}")
 
-    async def _send_log(self, message):
-        """로그 메시지 비동기 전송"""
-        max_retries = 3
-        for attempt in range(max_retries):
-            try:
-                async with aiohttp.ClientSession() as session:
-                    data = {'content': message, "username": "error alarm"}
-                    async with session.post(
-                        self.bot_url, 
-                        json=data, 
-                        timeout=aiohttp.ClientTimeout(total=5)
-                    ) as response:
-                        if response.status == 429:
-                            retry_after = float(response.headers.get('Retry-After', 1))
-                            await asyncio.sleep(retry_after)
-                            continue
-                        return
-            except Exception as e:
-                print(f"Log sending attempt {attempt + 1} failed: {e}")
-                await asyncio.sleep(0.5 * (2 ** attempt))
+	async def _send_log(self, message):
+		"""로그 메시지 비동기 전송"""
+		max_retries = 3
+		for attempt in range(max_retries):
+			try:
+				async with aiohttp.ClientSession() as session:
+					data = {'content': message, "username": "error alarm"}
+					async with session.post(
+						self.bot_url, 
+						json=data, 
+						timeout=aiohttp.ClientTimeout(total=5)
+					) as response:
+						if response.status == 429:
+							retry_after = float(response.headers.get('Retry-After', 1))
+							await asyncio.sleep(retry_after)
+							continue
+						return
+			except Exception as e:
+				print(f"Log sending attempt {attempt + 1} failed: {e}")
+				await asyncio.sleep(0.5 * (2 ** attempt))
 
-    def enqueue_log(self, message):
-        """로그 메시지 큐에 추가"""
-        self.log_queue.put(message)
+	def enqueue_log(self, message):
+		"""로그 메시지 큐에 추가"""
+		self.log_queue.put(message)
 
-    async def stop(self):
-        """로깅 프로세스 정지"""
-        self._stop_event.set()
-        self.executor.shutdown(wait=True)
-  
+	async def stop(self):
+		"""로깅 프로세스 정지"""
+		self._stop_event.set()
+		self.executor.shutdown(wait=True)
 
-async def userDataVar(init: initVar, supabase):
-    try:
-        
-        # 1. 업데이트 정보 가져오기
-        date_update = await asyncio.to_thread(
-            lambda: supabase.table('date_update').select("*").execute()
-        )
-        update_data = date_update.data[0]
 
-        # 단순 속성 설정
-        for attr, value in {
-            'youtube_TF': update_data['youtube_TF'],
-            'chat_json': update_data['chat_json']
-        }.items():
-            setattr(init, attr, value)
+async def userDataVar(init: initVar):
+	try:
+		
+		# 1. 업데이트 정보 가져오기
+		date_update = await asyncio.to_thread(
+			lambda: init.supabase.table('date_update').select("*").execute()
+		)
+		update_data = date_update.data[0]
 
-        # 병렬로 필요한 데이터 로드
-        tasks = []
-        
-        if update_data['user_date']:
-            tasks.append(load_user_state_data(init, supabase))
-            
-        if update_data['all_date']:
-            tasks.append(discordBotDataVars(init))
-            
-        # 모든 작업 기다리기
-        if tasks:
-            await asyncio.gather(*tasks)
+		# 단순 속성 설정
+		for attr, value in {
+			'youtube_TF': update_data['youtube_TF'],
+			'chat_json': update_data['chat_json']
+		}.items():
+			setattr(init, attr, value)
 
-    except Exception as e:
-        error_details = f"Error in userDataVar: {str(e)}"
-        if hasattr(e, 'response'):
-            error_details += f"\nResponse: {e.response.text}"
-        
-        if "EOF occurred in violation of protocol" in str(e):
-            error_details += "\nSSL connection error occurred"
-            
-        asyncio.create_task(DiscordWebhookSender._log_error(error_details))
+		# 병렬로 필요한 데이터 로드
+		tasks = []
+		
+		if update_data['user_date']:
+			tasks.append(load_user_state_data(init))
+			
+		if update_data['all_date']:
+			tasks.append(discordBotDataVars(init))
+			
+		# 모든 작업 기다리기
+		if tasks:
+			await asyncio.gather(*tasks)
 
-async def load_user_state_data(init, supabase):
-    # 사용자 상태 데이터 로드
-    userStateData = await asyncio.to_thread(
-        lambda: supabase.table('userStateData').select("*").execute()
-    )
-    init.userStateData = re_idx(make_list_to_dict(userStateData.data))
-    init.userStateData.index = list(init.userStateData['discordURL'])
-    
-    # 플래그 업데이트
-    await update_flag(supabase, 'user_date', False)
+	except Exception as e:
+		error_details = f"Error in userDataVar: {str(e)}"
+		if hasattr(e, 'response'):
+			error_details += f"\nResponse: {e.response.text}"
+		
+		if "EOF occurred in violation of protocol" in str(e):
+			error_details += "\nSSL connection error occurred"
+			
+		asyncio.create_task(DiscordWebhookSender._log_error(error_details))
+
+async def load_user_state_data(init: initVar):
+	# 사용자 상태 데이터 로드
+	userStateData = await asyncio.to_thread(
+		lambda: init.supabase.table('userStateData').select("*").execute()
+	)
+	init.userStateData = re_idx(make_list_to_dict(userStateData.data))
+	init.userStateData.index = list(init.userStateData['discordURL'])
+	
+	# 플래그 업데이트
+	await update_flag(init.supabase, 'user_date', False)
 
 async def update_flag(supabase, field, value):
-    # 비동기로 플래그 업데이트
-    await asyncio.to_thread(
-        lambda: supabase.table('date_update').upsert({
-            "idx": 0,
-            field: value
-        }).execute()
-    )
+	# 비동기로 플래그 업데이트
+	await asyncio.to_thread(
+		lambda: supabase.table('date_update').upsert({
+			"idx": 0,
+			field: value
+		}).execute()
+	)
 
 # async def cached_query(supabase, table, query_func, cache_key, ttl=60):
 # 	# 메모리 캐시 초기화
@@ -212,7 +207,6 @@ async def update_flag(supabase, field, value):
 async def discordBotDataVars(init: initVar):
 	while True:
 		try:
-			supabase = create_client(environ['supabase_url'], environ['supabase_key'])
 			
 			# 모든 테이블 이름을 리스트로 정의
 			table_names = [
@@ -224,7 +218,7 @@ async def discordBotDataVars(init: initVar):
 			]
 			
 			# 모든 테이블의 데이터를 비동기로 가져오기
-			tasks = [fetch_data(supabase, name) for name in table_names]
+			tasks = [fetch_data(init.supabase, name) for name in table_names]
 			results = await asyncio.gather(*tasks)
 			
 			# 결과를 딕셔너리로 변환
@@ -359,6 +353,13 @@ def getTwitchHeaders():
 	return {'client-id': twitch_Client_ID, 'Authorization': authorization} #get headers 
 def getChzzkHeaders(): return {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'} #get headers 
 def getChzzkCookie(): return {'NID_AUT': environ['NID_AUT'],'NID_SES':environ['NID_SES']} 
+def cafe_params(cafeNum, page_num):
+	return {
+			'search.queryType': 'lastArticle',
+			'ad': 'False',
+			'search.clubid': str(cafeNum),
+			'search.page': str(page_num)
+		}
 
 # async def should_terminate(sock, ID):
 # 	try:
@@ -381,50 +382,209 @@ def if_after_time(time_str, sec = 300): # 지금 시간이 이전 시간보다 S
 	return time <= datetime.now()
 
 def if_last_chat(last_chat_time: datetime, sec = 300): #마지막 채팅을 읽어온지 sec초가 지났다면 True
-    return (last_chat_time + timedelta(seconds=sec)) <= datetime.now()
+	return (last_chat_time + timedelta(seconds=sec)) <= datetime.now()
 
 # async def timer(time): 
 # 	await asyncio.sleep(time)  # time 초 대기
 # 	return "CLOSE"
 
-async def get_message(arr, platform):
-	platform_handlers = {
-		"afreeca": afreeca_get_url_json,
-		"twitch": afreeca_get_url_json,
-		"chzzk": chzzk_get_url_json,
-		"cafe": cafe_get_url_json
+def chzzk_getLink(uid: str): 
+	return f"https://api.chzzk.naver.com/service/v2/channels/{uid}/live-detail"
+
+def afreeca_getLink(afreeca_id: str): 
+	return f"https://chapi.sooplive.co.kr/api/{afreeca_id}/station"
+
+async def get_message(platform, link):
+	# 미리 정의된 플랫폼별 API 요청 구성
+	platform_config = {
+		"afreeca": {
+			"needs_cookies": False,
+			"needs_params": False,
+			"url_formatter": link,
+			"response_handler": lambda response: loads(response.text)
+		},
+		"chzzk": {
+			"needs_cookies": True,
+			"needs_params": True,
+			"url_formatter": link,
+			"response_handler": lambda response: loads(response.text)
+		},
+		"twitch": {
+			"needs_cookies": False,
+			"needs_params": False,
+			"url_formatter": link,
+			"response_handler": lambda response: loads(response.text)
+		},
+		"cafe": {
+			"needs_cookies": False,
+			"needs_params": True,
+			"url_formatter": lambda link, cafe_num: link,
+			"response_handler": lambda response: loads(response.text)
+		}
 	}
 	
-	handler = platform_handlers.get(platform)
-	if not handler:
-		return []
-
-	async with ClientSession() as session:
-		tasks = [handler(session, url) for url in arr]
-		responses = await asyncio.gather(*tasks)
-		return [responses]
-
-async def chzzk_get_url_json(session, args):
-	url, headers, cookies = args[0]
 	try:
-		async with session.get(url, headers=headers, cookies=cookies, timeout=3) as response:
-			return [await response.json(), args[1], True]
-	except: return [{}, args[1], False]
+		config = platform_config.get(platform)
+		if not config:
+			raise ValueError(f"지원하지 않는 플랫폼입니다: {platform}")
+		
+		# 기본 헤더 및 요청 설정
+		headers = {}
+		request_kwargs = {
+			"timeout": 10  # 타임아웃 시간 증가 (3초 → 10초)
+		}
+		
+		# 플랫폼별 헤더 설정
+		if platform == "chzzk":
+			headers = getChzzkHeaders()
+		elif platform == "twitch":
+			headers = getTwitchHeaders()  # 트위치 인증 헤더 (별도 구현 필요)
+		else:
+			headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"}
+		
+		request_kwargs["headers"] = headers
+		
+		# 쿠키가 필요한 경우 추가
+		if config["needs_cookies"]:
+			if platform == "chzzk":
+				request_kwargs["cookies"] = getChzzkCookie()
+
+		
+		# URL 형식 처리
+		formatted_url = link
+		if "url_formatter" in config:
+			if platform == "cafe":
+				BASE_URL, cafe_num = [*link.split(",")]  # 링크에서 카페 번호 추출 (가정)
+				formatted_url = config["url_formatter"](BASE_URL, cafe_num)
+			else:
+				formatted_url = config["url_formatter"]
+		
+		# 파라미터가 필요한 경우 추가
+		if config["needs_params"]:
+			if platform == "cafe":
+				page_num = 1  # 기본값 또는 파라미터로 전달 가능
+				cafe_num = link.split(",")[-1]  # 링크에서 카페 번호 추출 (가정)
+				request_kwargs["params"] = cafe_params(cafe_num, page_num)
+			elif platform == "chzzk":
+				# 치지직 파라미터 설정 (필요시)
+				pass
+		
+		# 재시도 설정
+		max_retries = 3
+		retry_count = 0
+		retry_delay = 2  # 초 단위
+		
+		# 재시도 메커니즘 구현
+		while retry_count < max_retries:
+			try:
+				# API 요청 실행
+				response = await asyncio.to_thread(
+					get,
+					formatted_url,
+					**request_kwargs
+				)
+				
+				# 응답 코드 확인
+				if response.status_code != 200:
+					error_msg = f"API 요청 실패: {response.status_code} - {platform}, {formatted_url}"
+					# 에러 로깅은 유지하되 재시도 수행
+					asyncio.create_task(DiscordWebhookSender._log_error(f"{error_msg} (시도 {retry_count+1}/{max_retries})"))
+					
+					# 서버 오류(5xx)의 경우만 재시도
+					if 500 <= response.status_code < 600:
+						retry_count += 1
+						if retry_count < max_retries:
+							await asyncio.sleep(retry_delay)
+							# 재시도 간격을 지수적으로 증가 (지수 백오프)
+							retry_delay *= 2
+							continue
+						else:
+							return {}
+					else:
+						# 4xx 등의 클라이언트 오류는 재시도하지 않고 바로 종료
+						return {}
+				
+				# 성공적인 응답을 받았으므로 처리 후 반환
+				return config["response_handler"](response)
+				
+			except (ConnectTimeout, ReadTimeout, ConnectionError, HTTPError) as e:
+				# 연결 관련 예외 발생 시 재시도
+				retry_count += 1
+				error_type = type(e).__name__
+				error_msg = f"API 요청 타임아웃/연결 오류 (시도 {retry_count}/{max_retries}): {platform} - {error_type}: {str(e)}"
+				if retry_count >= max_retries: asyncio.create_task(DiscordWebhookSender._log_error(error_msg))
+				else: print(error_msg)
+				
+				if retry_count < max_retries:
+					await asyncio.sleep(retry_delay)
+					# 재시도 간격을 지수적으로 증가 (지수 백오프)
+					retry_delay *= 2
+				else:
+					return {}
+				
+			except SSLError as ssl_err:
+				retry_count += 1
+				error_msg = f"SSL Error (시도 {retry_count}/{max_retries}): {platform} - {str(ssl_err)}"
+				if retry_count >= max_retries: asyncio.create_task(DiscordWebhookSender._log_error(error_msg))
+				else: print(error_msg)
+				
+				if retry_count < max_retries:
+					if 'requests_kwargs' in locals() and 'verify' in request_kwargs:
+						request_kwargs['verify'] = not request_kwargs['verify']
+					await asyncio.sleep(retry_delay)
+					retry_delay *= 2
+				else:
+					return {}
+			
+			except Exception as e:
+				# 기타 예외는 바로 반환
+				error_msg = f"error get_message: {platform} - {str(e)}"
+				asyncio.create_task(DiscordWebhookSender._log_error(error_msg))
+				return {}
+		
+	except Exception as e:
+		error_msg = f"error get_message2: {platform} - {str(e)}"
+		asyncio.create_task(DiscordWebhookSender._log_error(error_msg))
+		return {}
+
+# async def get_message(arr, platform):
+# 	platform_handlers = {
+# 		"afreeca": afreeca_get_url_json,
+# 		"twitch": afreeca_get_url_json,
+# 		"chzzk": chzzk_get_url_json,
+# 		"cafe": cafe_get_url_json
+# 	}
 	
-async def afreeca_get_url_json(session, args):
-	url, headers = args[0]
-	try:
-		async with session.get(url, headers=headers, timeout=3) as response:
-			return [await response.json(), args[1], True]
-	except: return [{}, args[1], False]
+# 	handler = platform_handlers.get(platform)
+# 	if not handler:
+# 		return []
 
-async def cafe_get_url_json(session, args):
-	url, params = args[0], args[1]
-	headers = getChzzkHeaders()
-	try:
-		async with session.get(url, params=params, headers=headers, timeout=3) as response:
-			return [await response.json(), True]
-	except Exception as e: return [{}, False]
+# 	async with ClientSession() as session:
+# 		tasks = [handler(session, url) for url in arr]
+# 		responses = await asyncio.gather(*tasks)
+# 		return [responses]
+
+# async def chzzk_get_url_json(session, args):
+# 	url, headers, cookies = args[0]
+# 	try:
+# 		async with session.get(url, headers=headers, cookies=cookies, timeout=3) as response:
+# 			return [await response.json(), args[1], True]
+# 	except: return [{}, args[1], False]
+	
+# async def afreeca_get_url_json(session, args):
+# 	url, headers = args[0]
+# 	try:
+# 		async with session.get(url, headers=headers, timeout=3) as response:
+# 			return [await response.json(), args[1], True]
+# 	except: return [{}, args[1], False]
+
+# async def cafe_get_url_json(session, args):
+# 	url, params = args[0], args[1]
+# 	headers = getChzzkHeaders()
+# 	try:
+# 		async with session.get(url, params=params, headers=headers, timeout=3) as response:
+# 			return [await response.json(), True]
+# 	except Exception as e: return [{}, False]
 	
 def twitch_getChannelOffStateData(offStateList, twitchID):
 	try:
@@ -440,7 +600,7 @@ def twitch_getChannelOffStateData(offStateList, twitchID):
 		asyncio.create_task(DiscordWebhookSender._log_error(f"error getChannelOffStateData twitch {e}"))
 		return None, None, None
 
-def chzzk_getChannelOffStateData(stateData, chzzkID, channel_thumbnail = ""):
+def chzzk_getChannelOffStateData(stateData, chzzkID, profile_image = ""):
 	try:
 		if stateData["channel"]["channelId"]==chzzkID:
 			return (
@@ -448,127 +608,61 @@ def chzzk_getChannelOffStateData(stateData, chzzkID, channel_thumbnail = ""):
 				stateData["liveTitle"],
 				stateData["channel"]["channelImageUrl"]
 			)
-		return None, None, channel_thumbnail
+		return None, None, profile_image
 	except Exception as e: 
 		asyncio.create_task(DiscordWebhookSender._log_error(f"error getChannelOffStateData chzzk {e}"))
-		return None, None, channel_thumbnail
+		return None, None, profile_image
 
-def afreeca_getChannelOffStateData(stateData, afreecaID, channel_thumbnail = ""):
+def afreeca_getChannelOffStateData(stateData, afreeca_id, profile_image = ""):
 	try:
-		if stateData["station"]["user_id"] == afreecaID: 
+		if stateData["station"]["user_id"] == afreeca_id: 
 			live = int(stateData["broad"] is not None)
 			title = stateData["broad"]["broad_title"] if live else None
-			thumbnail_url = stateData["profile_image"]
-			if thumbnail_url.startswith("//"):
-				thumbnail_url = f"https:{thumbnail_url}"
-			return live, title, thumbnail_url
-		return None, None, channel_thumbnail
+			profile_image = stateData["profile_image"]
+			if profile_image.startswith("//"):
+				profile_image = f"https:{profile_image}"
+			return live, title, profile_image
+		return None, None, profile_image
 	except Exception as e: 
 		asyncio.create_task(DiscordWebhookSender._log_error(f"error getChannelOffStateData afreeca {e}"))
 
-def afreeca_getiflive(stateData):
-	try:
-		thumbnail_url = stateData["profile_image"]
-		if thumbnail_url.startswith("//"):
-			thumbnail_url = f"https:{thumbnail_url}"
-		return thumbnail_url
-	except Exception as e:
-		asyncio.create_task(DiscordWebhookSender._log_error(f"error getChannelOffStateData {e}"))
-		return None
-
-async def save_airing_data(init: initVar, platform, id_):
+async def save_airing_data(titleData, platform: str, id_, supabase):
 	def get_index(channel_list, target_id):
 		return {id: idx for idx, id in enumerate(channel_list)}[target_id]
 	
-	def get_twitch_data():
-		return {
-				"idx": get_index(init.twitch_titleData["channelID"], id_),
-				"live_state": init.twitch_titleData.loc[id_, "live_state"],
-				"title1": init.twitch_titleData.loc[id_, "title1"]
+	table_name = platform + "_titleData"
+	data_func = {
+				"idx": get_index(titleData["channelID"], id_),
+				"live_state": titleData.loc[id_, "live_state"],
+				"title1": titleData.loc[id_, "title1"],
+				"title2": titleData.loc[id_, "title2"],
+				"update_time": titleData.loc[id_, "update_time"],
+				"chatChannelId": titleData.loc[id_, "chatChannelId"],
+				"oldChatChannelId": titleData.loc[id_, "oldChatChannelId"],
 		}
-	
-	def get_chzzk_data():
-		return {
-				"idx": get_index(init.chzzk_titleData["channelID"], id_),
-				"live_state": init.chzzk_titleData.loc[id_, "live_state"],
-				"title1": init.chzzk_titleData.loc[id_, "title1"],
-				"title2": init.chzzk_titleData.loc[id_, "title2"],
-				"update_time": init.chzzk_titleData.loc[id_, "update_time"],
-				"channelURL": init.chzzk_titleData.loc[id_, "channelURL"],
-				"messageTime": init.chzzk_titleData.loc[id_, "messageTime"]
-		}
-	
-	def get_afreeca_data():
-		return {
-				"idx": get_index(init.afreeca_titleData["channelID"], id_),
-				"live_state": init.afreeca_titleData.loc[id_, "live_state"],
-				"title1": init.afreeca_titleData.loc[id_, "title1"],
-				"title2": init.afreeca_titleData.loc[id_, "title2"],
-				"update_time": init.afreeca_titleData.loc[id_, "update_time"],
-				"chatChannelId": init.afreeca_titleData.loc[id_, "chatChannelId"],
-				"oldChatChannelId": init.afreeca_titleData.loc[id_, "oldChatChannelId"]
-		}
-
-	platform_configs = {
-		'twitch': ('twitch_titleData', get_twitch_data),
-		'chzzk': ('chzzk_titleData', get_chzzk_data),
-		'afreeca': ('afreeca_titleData', get_afreeca_data)
-	}
-
-	if platform not in platform_configs:
-		asyncio.create_task(DiscordWebhookSender._log_error(f"Unsupported platform: {platform}"))
-		return
-	
-	table_name, data_func = platform_configs[platform]
 
 	for _ in range(3):
 		try:
-			supabase = create_client(environ['supabase_url'], environ['supabase_key'])
 			supabase.table(table_name).upsert(data_func()).execute()
 			break
 		except Exception as e:
 			asyncio.create_task(DiscordWebhookSender._log_error(f"error saving profile data {e}"))
 			await asyncio.sleep(0.5)
 
-async def save_profile_data(init: initVar, platform, id):
+async def save_profile_data(IDList, platform: str, id, supabase):
 	# Platform specific configurations
 	def get_index(channel_list, target_id):
 		return {id: idx for idx, id in enumerate(channel_list)}[target_id]
 
-	def get_twitch_data():
-		return {
-			"idx": get_index(init.twitchIDList["channelID"], id),
-			'channel_thumbnail': init.twitchIDList.loc[id, 'channel_thumbnail']
-		}
-	
-	def get_chzzk_data():
-		return {
-			"idx": get_index(init.chzzkIDList["channelID"], id),
-			'channel_thumbnail': init.chzzkIDList.loc[id, 'channel_thumbnail'],
-			'userID': init.chzzkIDList.loc[id, 'userID']
-		}
-	
-	def get_afreeca_data():
-		return {
-			"idx": get_index(init.afreecaIDList["channelID"], id),
-			'channel_thumbnail': init.afreecaIDList.loc[id, 'channel_thumbnail']
-		}
 
-	platform_configs = {
-		'twitch': ('twitchIDList', get_twitch_data),
-		'chzzk': ('chzzkIDList', get_chzzk_data),
-		'afreeca': ('afreecaIDList', get_afreeca_data)
-	}
-
-	if platform not in platform_configs:
-		asyncio.create_task(DiscordWebhookSender._log_error(f"Unsupported platform: {platform}"))
-		return
-
-	table_name, data_func = platform_configs[platform]
+	table_name = platform + "IDList"
+	data_func = {
+			"idx": get_index(IDList["channelID"], id),
+			'profile_image': IDList.loc[id, 'profile_image']
+		}
 
 	for _ in range(3):
 		try:
-			supabase = create_client(environ['supabase_url'], environ['supabase_key'])
 			supabase.table(table_name).upsert(data_func()).execute()
 			break
 		except Exception as e:

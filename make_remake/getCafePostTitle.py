@@ -2,15 +2,12 @@ import asyncio
 from os import environ
 from json import loads
 from time import gmtime
-from requests import get
 from datetime import datetime
 from urllib.parse import quote
 from supabase import create_client
 from dataclasses import dataclass
-from Chzzk_live_message import chzzk_getLink
-from Afreeca_live_message import afreeca_getLink
-from discord_webhook_sender import DiscordWebhookSender, get_cafe_list_of_urls
-from base import getChzzkHeaders, subjectReplace, getChzzkCookie, afreeca_getChannelOffStateData, chzzk_getChannelOffStateData, get_message, iconLinkData, initVar
+from discord_webhook_sender import DiscordWebhookSender, get_list_of_urls
+from base import subjectReplace, afreeca_getChannelOffStateData, chzzk_getChannelOffStateData, get_message, iconLinkData, initVar, chzzk_getLink, afreeca_getLink
 @dataclass
 class CafePostData:
     cafe_link: str
@@ -22,46 +19,36 @@ class CafePostData:
     writer_nickname: str
     
 class getCafePostTitle:
-    def __init__(self, init_var: initVar):
+    def __init__(self, init_var: initVar, channel_id):
         self.DO_TEST: bool = init_var.DO_TEST
         self.userStateData = init_var.userStateData
         self.cafeData = init_var.cafeData
-        self.channelID: str = ""
+        self.channel_id: str = channel_id
 
-    async def start(self, channel_id):
+    async def start(self):
         try:
             self.message_list: list = []
-            self.channelID = channel_id
             await self.getCafeDataDic()
             await self.postCafe()
                 
         except Exception as e:
-            asyncio.create_task(DiscordWebhookSender._log_error(f"error cafe {self.channelID}.{e}"))
+            asyncio.create_task(DiscordWebhookSender._log_error(f"error cafe {self.channel_id}.{e}"))
 
     async def getCafeDataDic(self):
-        try:
-            response_list = await get_message(self.get_article_list(), "cafe")
-        except Exception as e:
-            asyncio.create_task(DiscordWebhookSender._log_error(f"카페 데이터 조회 중 오류 발생: {e}"))
-            return
-        
-        cafe_json = self.cafeData.loc[self.channelID, 'cafe_json']
+        BASE_URL = f"https://apis.naver.com/cafe-web/cafe2/ArticleListV2dot1.json,{str(self.cafeData.loc[self.channel_id, 'cafeNum'])}"
+        response = await get_message("cafe", BASE_URL)
+
+        cafe_json = self.cafeData.loc[self.channel_id, 'cafe_json']
         cafe_json_ref_articles = cafe_json["refArticleId"]
         max_ref_article = max(cafe_json_ref_articles) if cafe_json_ref_articles else 0
-        update_time = int(self.cafeData.loc[self.channelID, 'update_time'])
-        cafe_name_dict = self.cafeData.loc[self.channelID, "cafeNameDict"]
-        
-        for response in response_list:
-            for request, is_success in response:
-                if not is_success:
-                    continue
-                
-                try:
-                    self._process_article_list(request, cafe_name_dict, max_ref_article, update_time, cafe_json_ref_articles)
-                except Exception as e:
-                    asyncio.create_task(DiscordWebhookSender._log_error(f"게시글 처리 중 오류 발생: {e}"))
-                    continue
-        
+        update_time = int(self.cafeData.loc[self.channel_id, 'update_time'])
+        cafe_name_dict = self.cafeData.loc[self.channel_id, "cafeNameDict"]
+     
+        try:
+            self._process_article_list(response, cafe_name_dict, max_ref_article, update_time, cafe_json_ref_articles)
+        except Exception as e:
+            asyncio.create_task(DiscordWebhookSender._log_error(f"게시글 처리 중 오류 발생: {e}"))
+
         return
 
     def _process_article_list(self, request, cafe_name_dict, max_ref_article, update_time, cafe_json_ref_articles):
@@ -87,8 +74,8 @@ class getCafePostTitle:
             article["subject"] = subjectReplace(article["subject"])
             
             # 최신 업데이트 시간 갱신
-            self.cafeData.loc[self.channelID, 'update_time'] = max(
-                self.cafeData.loc[self.channelID, 'update_time'], 
+            self.cafeData.loc[self.channel_id, 'update_time'] = max(
+                self.cafeData.loc[self.channel_id, 'update_time'], 
                 article["writeDateTimestamp"]
             )
             
@@ -115,7 +102,7 @@ class getCafePostTitle:
         Args:
             article: 게시글 데이터
         """
-        cafeID = self.cafeData.loc[self.channelID, 'cafeID']
+        cafeID = self.cafeData.loc[self.channel_id, 'cafeID']
         cafe_post = CafePostData(
             cafe_link=f"https://cafe.naver.com/{cafeID}/{article['refArticleId']}",
             menu_id=article["menuId"],
@@ -127,44 +114,30 @@ class getCafePostTitle:
         )
         self.message_list.append(cafe_post)
 
-    def get_article_list(self, page_num: int = 1) -> list:
-        BASE_URL = "https://apis.naver.com/cafe-web/cafe2/ArticleListV2dot1.json"
-        
-        params = {
-            'search.queryType': 'lastArticle',
-            'ad': 'False',
-            'search.clubid': str(self.cafeData.loc[self.channelID, 'cafeNum']),
-            'search.page': str(page_num)
-        }
-        
-        return [(BASE_URL, params)]
-    
     async def postCafe(self):
         try:
             if not self.message_list:
                 return
             
-            tasks = []
             for post_data in self.message_list:
                 json_data = await self.create_cafe_json(post_data)
                 print(f"{datetime.now()} {post_data.writer_nickname} post cafe {post_data.subject}")
-                task = DiscordWebhookSender().send_messages(get_cafe_list_of_urls(self.DO_TEST, self.userStateData, self.channelID, json_data, post_data.writer_nickname))
-                tasks.append(task)
-            
-            if tasks:
-                await asyncio.gather(*tasks)
-            
+
+                list_of_urls = get_list_of_urls(self.DO_TEST, self.userStateData, post_data.writer_nickname, self.channel_id, json_data, "cafe_user_json")
+                asyncio.create_task(DiscordWebhookSender().send_messages(list_of_urls))
+
             self.saveCafeData()
             
         except Exception as e:
             asyncio.create_task(DiscordWebhookSender._log_error(f"error postCafe {e}"))
+            self.message_list.clear()
 
     async def create_cafe_json(self, post_data: CafePostData) -> dict:
         def getTime(timestamp):
             tm = gmtime(timestamp/1000)
             return f"{tm.tm_year}-{tm.tm_mon:02d}-{tm.tm_mday:02d}T{tm.tm_hour:02d}:{tm.tm_min:02d}:{tm.tm_sec:02d}Z"
     
-        cafe_info = self.cafeData.loc[self.channelID]
+        cafe_info = self.cafeData.loc[self.channel_id]
         menu_url = (f"https://cafe.naver.com/{cafe_info['cafeID']}"
                 f"?iframe_url=/ArticleList.nhn%3F"
                 f"search.clubid={int(cafe_info['cafeNum'])}"
@@ -201,63 +174,41 @@ class getCafePostTitle:
             "afreeca": {
                 "get_link": afreeca_getLink,
                 "process_data": afreeca_getChannelOffStateData,
-                "needs_cookies": False
             },
             "chzzk": {
                 "get_link": chzzk_getLink,
                 "process_data": chzzk_getChannelOffStateData,
-                "needs_cookies": True,
                 "content_path": lambda data: data["content"]
             }
         }
         
         try:
             # 작성자 정보 가져오기
-            if writerNickname not in self.cafeData.loc[self.channelID, "cafeNameDict"]:
+            if writerNickname not in self.cafeData.loc[self.channel_id, "cafeNameDict"]:
                 return environ['default_thumbnail']  # 기본 썸네일
                 
-            cafe_info = self.cafeData.loc[self.channelID, "cafeNameDict"][writerNickname]
+            cafe_info = self.cafeData.loc[self.channel_id, "cafeNameDict"][writerNickname]
             platform, user_id, current_thumbnail = cafe_info[1], cafe_info[0], cafe_info[2]
             
-            # 플랫폼 설정 가져오기
             if platform not in platform_config:
                 return current_thumbnail
-                
             config = platform_config[platform]
             
-            # API 요청 준비
-            headers = getChzzkHeaders()
-            request_kwargs = {
-                "headers": headers,
-                "timeout": 3
-            }
-            
-            # 쿠키가 필요한 경우 추가
-            if config["needs_cookies"]:
-                request_kwargs["cookies"] = getChzzkCookie()
-            
-            # API 요청 실행
-            response = await asyncio.to_thread(
-                get, 
-                config["get_link"](user_id), 
-                **request_kwargs
-            )
-            
+            data = await get_message(platform, config["get_link"](user_id))
             # 응답 데이터 처리
-            data = loads(response.text)
             if "content_path" in config:
                 data = config["content_path"](data)
                 
             # 썸네일 URL 추출
-            _, _, thumbnail_url = config["process_data"](
+            _, _, profile_image = config["process_data"](
                 data,
                 user_id,
                 current_thumbnail
             )
             
             # 새 썸네일 URL 저장
-            self.cafeData.loc[self.channelID, "cafeNameDict"][writerNickname][2] = thumbnail_url
-            return thumbnail_url
+            self.cafeData.loc[self.channel_id, "cafeNameDict"][writerNickname][2] = profile_image
+            return profile_image
 
         except Exception as e:
             error_msg = f"카페 썸네일 가져오기 실패 (작성자: {writerNickname}, 플랫폼: {platform if 'platform' in locals() else 'unknown'}): {str(e)}"
@@ -273,10 +224,10 @@ class getCafePostTitle:
             
             # 데이터 준비를 별도로 하여 가독성 향상
             cafe_data = {
-                "idx": idx[self.channelID],
-                "update_time": int(self.cafeData.loc[self.channelID, 'update_time']),
-                "cafe_json": self.cafeData.loc[self.channelID, 'cafe_json'],
-                "cafeNameDict": self.cafeData.loc[self.channelID, 'cafeNameDict']
+                "idx": idx[self.channel_id],
+                "update_time": int(self.cafeData.loc[self.channel_id, 'update_time']),
+                "cafe_json": self.cafeData.loc[self.channel_id, 'cafe_json'],
+                "cafeNameDict": self.cafeData.loc[self.channel_id, 'cafeNameDict']
             }
             
             # supabase 클라이언트 생성

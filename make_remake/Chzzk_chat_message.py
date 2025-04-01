@@ -1,17 +1,14 @@
 import asyncio
-import aiohttp
 import chzzk_api
 import websockets
 from os import environ
-from requests import get
 from datetime import datetime
 from urllib.parse import unquote
 from json import loads, dumps, JSONDecodeError
 from dataclasses import dataclass, field
-from supabase import create_client
 from cmd_type import CHZZK_CHAT_CMD
-from base import getChzzkHeaders, getChzzkCookie, if_after_time, if_last_chat
-from discord_webhook_sender import DiscordWebhookSender, get_chat_list_of_urls
+from base import  getChzzkCookie, if_after_time, if_last_chat, initVar, get_message
+from discord_webhook_sender import DiscordWebhookSender, get_list_of_urls, get_json_data
 
 @dataclass
 class ChzzkChatData:
@@ -31,8 +28,9 @@ class ChzzkChatData:
         self.chat_event = asyncio.Event()
 
 class chzzk_chat_message:
-    def __init__(self, init_var, chzzk_id):
+    def __init__(self, init_var: initVar, chzzk_id):
         self.DO_TEST = init_var.DO_TEST
+        self.supabase = init_var.supabase
         self.userStateData = init_var.userStateData
         self.chzzkIDList = init_var.chzzkIDList
         self.chzzk_chatFilter = init_var.chzzk_chatFilter
@@ -269,9 +267,10 @@ class chzzk_chat_message:
             try:
                 await self.data.chat_event.wait()
                 name, chat, chat_type, uid = self.data.chzzk_chat_msg_List.pop(0)
-                thumbnail_url = await self._get_thumbnail_url(name, chat, uid)
-
-                list_of_urls = get_chat_list_of_urls(self.DO_TEST, self.userStateData, name, chat, thumbnail_url, self.data.channel_id, self.data.channel_name)
+                profile_image = await self._get_profile_image(uid)
+                json_data = get_json_data(name, chat, self.data.channel_name, profile_image)
+                
+                list_of_urls = get_list_of_urls(self.DO_TEST, self.userStateData, name, self.data.channel_id, self.data.channel_name, json_data, "chat_user_json")
                 asyncio.create_task(DiscordWebhookSender().send_messages(list_of_urls))
 
                 print(f"{datetime.now()} post chat")
@@ -381,55 +380,25 @@ class chzzk_chat_message:
         
         return dict(send_dict, **default_dict)
     
-    async def _get_thumbnail_url(self, name, chat, uid):
+    async def _get_profile_image(self, uid):
         def chzzk_getLink(uid):
             return f'https://api.chzzk.naver.com/service/v1/channels/{uid}'
         
-        thumbnail_url = environ['default_thumbnail']  # 변수를 기본값으로 미리 초기화
-        thumbnail_url = None
+        profile_image = None
 
-        for attempt in range(3):
-            try:
-                headers = getChzzkHeaders()
-                Cookie = getChzzkCookie()
-                
-                async with aiohttp.ClientSession() as session:  # aiohttp 사용
-                    async with session.get(
-                        chzzk_getLink(uid), 
-                        headers=headers, 
-                        cookies=Cookie, 
-                        timeout=aiohttp.ClientTimeout(total=5)  # timeout 증가
-                    ) as response:
-                        if response.status != 200:
-                            await asyncio.sleep(0.1)  # 대기 시간 약간 증가
-                            continue
+        data = await get_message("chzzk", chzzk_getLink(uid))
+        profile_image = data["content"]["channelImageUrl"]
 
-                        data = await response.json()
-                        thumbnail_url = data["content"]["channelImageUrl"]
+        if profile_image and profile_image.startswith(("https://nng-phinf.pstatic.net", "https://ssl.pstatic.net")):
+            return profile_image
 
-                if thumbnail_url and thumbnail_url.startswith(("https://nng-phinf.pstatic.net", "https://ssl.pstatic.net")):
-                    break
-                if thumbnail_url is None or len(thumbnail_url) == 0:
-                    thumbnail_url = environ['default_thumbnail']
-                    break
+        profile_image = environ['default_thumbnail']
 
-                
-            except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-                await asyncio.sleep(0.05)
-                asyncio.create_task(DiscordWebhookSender._log_error(f"error make thumbnail url {name}.{chat}.(attempt {attempt + 1}/3): {str(e)}"))
-                
-            except Exception as e:
-                await asyncio.sleep(0.05)
-                asyncio.create_task(DiscordWebhookSender._log_error(f"unexpected error in make thumbnail url: {str(e)}"))
-        else:
-            thumbnail_url = environ['default_thumbnail']
-
-        return thumbnail_url
+        return profile_image
 
     def _change_chzzk_chat_json(self, chzzkID_chat_rejoin = True):
         self.chat_json[self.chzzk_id] = chzzkID_chat_rejoin
-        supabase = create_client(environ['supabase_url'], environ['supabase_key'])
-        supabase.table('date_update').upsert({"idx": 0, "chat_json": self.chat_json}).execute()
+        self.supabase.table('date_update').upsert({"idx": 0, "chat_json": self.chat_json}).execute()
     
     def if_chzzk_Join(self) -> int:
         try:
@@ -462,8 +431,7 @@ class chzzk_chat_message:
             "idx": idx[self.data.channel_id],
             **updates}
         
-        supabase = create_client(environ['supabase_url'], environ['supabase_key'])
-        supabase.table('chzzk_titleData').upsert(supabase_data).execute()
+        self.supabase.table('chzzk_titleData').upsert(supabase_data).execute()
         
     async def sendHi(self, himent):
         if self.if_chzzk_Join() == 2:
