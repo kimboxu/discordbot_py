@@ -489,7 +489,7 @@ async def get_message(platform, link):
 				if response.status_code != 200:
 					error_msg = f"API 요청 실패: {response.status_code} - {platform}, {formatted_url}"
 					# 에러 로깅은 유지하되 재시도 수행
-					asyncio.create_task(DiscordWebhookSender._log_error(f"{error_msg} (시도 {retry_count+1}/{max_retries})"))
+					if retry_count >= max_retries: asyncio.create_task(DiscordWebhookSender._log_error(f"{error_msg} (시도 {retry_count+1}/{max_retries})"))
 					
 					# 서버 오류(5xx)의 경우만 재시도
 					if 500 <= response.status_code < 600:

@@ -8,7 +8,7 @@ from Twitch_live_message import twitch_live_message
 # from Chzzk_live_message import chzzk_live_message
 # from Afreeca_live_message import afreeca_live_message
 from Chzzk_chat_message import chzzk_chat_message
-from Afreeca_chat_message import AfreecaChat
+from Afreeca_chat_message import afreeca_chat_message
 from Chzzk_video import chzzk_video
 from getCafePostTitle import getCafePostTitle
 from getYoutubeJsonData import getYoutubeJsonData
@@ -65,20 +65,42 @@ async def fyoutube(init: base.initVar):
 
 async def chzzk_chatf(init: base.initVar):
     await asyncio.sleep(2)
+    
+    tasks = {}  # 채널 ID별 실행 중인 task를 관리할 딕셔너리
+
     while True:
         try:
-            test = [chzzk_chat_message(init, chzzkID).start() for chzzkID in init.chzzkIDList["channelID"]] 
-            await asyncio.gather(*test)
-        except Exception as e: print(f"{datetime.now()} error chzzk_chatf {e}");await asyncio.sleep(1)
+            # 기존 실행 중인 태스크를 유지하면서, 새로운 채널이 추가되면 실행
+            for channel_id in init.chzzkIDList["channelID"]:
+                if channel_id not in tasks or tasks[channel_id].done():
+                    chat_instance = chzzk_chat_message(init, channel_id)
+                    tasks[channel_id] = asyncio.create_task(chat_instance.start())
+
+            await asyncio.sleep(1)  # 5초마다 체크 (필요하면 조절 가능)
+        
+        except Exception as e:
+            print(f"{datetime.now()} error chzzk_chatf {e}")
+            await asyncio.sleep(1)
 
 async def afreeca_chatf(init: base.initVar):
     await asyncio.sleep(2)
+    
+    tasks = {}  # 채널 ID별 실행 중인 task를 관리할 딕셔너리
+
     while True:
         try:
-            test = [AfreecaChat(init, afreecaID).start() for afreecaID in init.afreecaIDList["channelID"]] 
-            await asyncio.gather(*test)
-        except Exception as e: print(f"{datetime.now()} error afreeca_chatf {e}");await asyncio.sleep(1)
+            # 기존 실행 중인 태스크를 유지하면서, 새로운 채널이 추가되면 실행
+            for channel_id in init.afreecaIDList["channelID"]:
+                if channel_id not in tasks or tasks[channel_id].done():
+                    chat_instance = afreeca_chat_message(init, channel_id)
+                    tasks[channel_id] = asyncio.create_task(chat_instance.start())
+
+            await asyncio.sleep(1)  # 5초마다 체크 (필요하면 조절 가능)
         
+        except Exception as e:
+            print(f"{datetime.now()} error afreeca_chatf {e}")
+            await asyncio.sleep(1)
+ 
 async def main():
     init = base.initVar()
     await base.discordBotDataVars(init)
