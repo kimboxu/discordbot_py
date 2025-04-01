@@ -219,7 +219,7 @@ class chzzk_chat_message:
     async def _post_chat(self):
         while not self.data.sock.closed:
             try:
-                if self.data.chzzk_chat_msg_List: await self.data.chat_event.wait()
+                if not self.data.chzzk_chat_msg_List: await self.data.chat_event.wait()
                 chat_data, chat_type = self.data.chzzk_chat_msg_List.pop(0)
 
                 nickname = self.get_nickname(chat_data)
