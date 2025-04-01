@@ -14,7 +14,7 @@ from getCafePostTitle import getCafePostTitle
 from getYoutubeJsonData import getYoutubeJsonData
 from discord_webhook_sender import DiscordWebhookSender
 
-from live_message import ChzzkLiveMessage, AfreecaLiveMessage
+from live_message import chzzk_live_message, afreeca_live_message
 
     
 async def main_loop(init: base.initVar):
@@ -25,10 +25,10 @@ async def main_loop(init: base.initVar):
 
             cafe_tasks = [asyncio.create_task(getCafePostTitle(init, channel_id).start()) for channel_id in init.cafeData["channelID"]]
             chzzk_video_tasks = [asyncio.create_task(chzzk_video(init, channel_id).start()) for channel_id in init.chzzkIDList["channelID"]]
+            # chzzk_live_tasks = [asyncio.create_task(chzzk_live_message(init, channel_id).start()) for channel_id in init.chzzkIDList["channelID"]]
+            # afreeca_live_tasks = [asyncio.create_task(afreeca_live_message(init, channel_id).start()) for channel_id in init.afreecaIDList["channelID"]]
             chzzk_live_tasks = [asyncio.create_task(chzzk_live_message(init, channel_id).start()) for channel_id in init.chzzkIDList["channelID"]]
             afreeca_live_tasks = [asyncio.create_task(afreeca_live_message(init, channel_id).start()) for channel_id in init.afreecaIDList["channelID"]]
-            # chzzk_live_tasks = [asyncio.create_task(ChzzkLiveMessage(init, channel_id).start()) for channel_id in init.chzzkIDList["channelID"]]
-            # afreeca_live_tasks = [asyncio.create_task(AfreecaLiveMessage(init, channel_id).start()) for channel_id in init.afreecaIDList["channelID"]]
             
             tasks = [
                 *chzzk_live_tasks,

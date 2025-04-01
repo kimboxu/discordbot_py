@@ -13,7 +13,7 @@ class afreeca_live_message():
 		self.DO_TEST = init_var.DO_TEST
 		self.userStateData = init_var.userStateData
 		self.afreecaIDList = init_var.afreecaIDList
-		self.afreeca_titleData = init_var.afreeca_titleData
+		self.titleData = init_var.afreeca_titleData
 		self.channel_id = channel_id
 		self.data = base.LiveData()
 
@@ -60,8 +60,8 @@ class afreeca_live_message():
 
 	def _update_title_if_needed(self):
 		if (base.if_after_time(self.data.change_title_time) and 
-	  		(self.afreeca_titleData.loc[self.channel_id,'title2'] != self.afreeca_titleData.loc[self.channel_id,'title1'])):
-			self.afreeca_titleData.loc[self.channel_id,'title2'] = self.afreeca_titleData.loc[self.channel_id,'title1']
+	  		(self.titleData.loc[self.channel_id,'title2'] != self.titleData.loc[self.channel_id,'title1'])):
+			self.titleData.loc[self.channel_id,'title2'] = self.titleData.loc[self.channel_id,'title1']
 
 	def _get_stream_data(self, state_data):
 		return base.afreeca_getChannelOffStateData(
@@ -112,9 +112,9 @@ class afreeca_live_message():
 		self.data.change_title_time = datetime.now().isoformat()
 
 	def update_broad_no(self, state_data):
-		if state_data["broad"] and state_data["broad"]["broad_no"] != self.afreeca_titleData.loc[self.channel_id, 'chatChannelId']:
-			self.afreeca_titleData.loc[self.channel_id, 'oldChatChannelId'] = self.afreeca_titleData.loc[self.channel_id, 'chatChannelId']
-			self.afreeca_titleData.loc[self.channel_id, 'chatChannelId'] = state_data["broad"]["broad_no"]
+		if state_data["broad"] and state_data["broad"]["broad_no"] != self.titleData.loc[self.channel_id, 'chatChannelId']:
+			self.titleData.loc[self.channel_id, 'oldChatChannelId'] = self.titleData.loc[self.channel_id, 'chatChannelId']
+			self.titleData.loc[self.channel_id, 'chatChannelId'] = state_data["broad"]["broad_no"]
 	
 	def _get_channel_name(self):
 		return self.afreecaIDList.loc[self.channel_id, 'channelName']
@@ -132,7 +132,7 @@ class afreeca_live_message():
 			list_of_urls = get_list_of_urls(self.DO_TEST, self.userStateData, channel_name, self.channel_id, json_data, db_name)
 			asyncio.create_task(DiscordWebhookSender().send_messages(list_of_urls))
 
-			await base.save_airing_data(self.afreeca_titleData, 'afreeca', self.channel_id)
+			await base.save_airing_data(self.titleData, 'afreeca', self.channel_id)
 
 		except Exception as e:
 			asyncio.create_task(DiscordWebhookSender._log_error(f"postLiveMSG {e}"))
@@ -162,21 +162,21 @@ class afreeca_live_message():
 			print(f"{now} offLine {channel_name}")
 
 	def _get_old_title(self):
-		return self.afreeca_titleData.loc[self.channel_id,'title2']
+		return self.titleData.loc[self.channel_id,'title2']
 
 	def onLineTitle(self, message): #change title. state to online
-		if message == "뱅온!": self.afreeca_titleData.loc[self.channel_id,'live_state'] = "OPEN"
-		self.afreeca_titleData.loc[self.channel_id,'title2'] = self.afreeca_titleData.loc[self.channel_id,'title1']
-		self.afreeca_titleData.loc[self.channel_id,'title1'] = self.data.title
+		if message == "뱅온!": self.titleData.loc[self.channel_id,'live_state'] = "OPEN"
+		self.titleData.loc[self.channel_id,'title2'] = self.titleData.loc[self.channel_id,'title1']
+		self.titleData.loc[self.channel_id,'title1'] = self.data.title
 
 	def onLineTime(self, message): #change time. state to online
 		if message == "뱅온!": 
-			self.afreeca_titleData.loc[self.channel_id,'update_time'] = self.getStarted_at("openDate")
+			self.titleData.loc[self.channel_id,'update_time'] = self.getStarted_at("openDate")
 
-	def offLineTitle(self): self.afreeca_titleData.loc[self.channel_id,'live_state'] = "CLOSE" # change state to offline  
+	def offLineTitle(self): self.titleData.loc[self.channel_id,'live_state'] = "CLOSE" # change state to offline  
 
 	def ifChangeTitle(self):
-		return self.data.title not in [str(self.afreeca_titleData.loc[self.channel_id,'title1']), str(self.afreeca_titleData.loc[self.channel_id,'title2'])] #if title change
+		return self.data.title not in [str(self.titleData.loc[self.channel_id,'title1']), str(self.titleData.loc[self.channel_id,'title2'])] #if title change
 
 	async def getOnAirJson(self, message, state_data):
 		channel_url  = self.get_channel_url()
@@ -217,7 +217,7 @@ class afreeca_live_message():
 	# 			"embeds": [
 	# 				{"color": int(self.afreecaIDList.loc[self.channel_id, 'channel_color']),
 	# 				"fields": [
-	# 					{"name": "이전 방제", "value": str(self.afreeca_titleData.loc[self.channel_id,'title1']), "inline": True},
+	# 					{"name": "이전 방제", "value": str(self.titleData.loc[self.channel_id,'title1']), "inline": True},
 	# 					{"name": "현재 방제", "value": title, "inline": True}],
 	# 				"title":  f"{self._get_channel_name()} {message}\n",\
 	# 			"url": url, \
@@ -235,7 +235,7 @@ class afreeca_live_message():
 
 	def get_channel_url(self):
 		afreecaID = self.afreecaIDList.loc[self.channel_id, "afreecaID"]
-		bno = self.afreeca_titleData.loc[self.channel_id, 'chatChannelId']
+		bno = self.titleData.loc[self.channel_id, 'chatChannelId']
 		return f"https://play.sooplive.co.kr/{afreecaID}/{bno}"
 
 	def getStarted_at(self, status: str): 
@@ -271,14 +271,14 @@ class afreeca_live_message():
 	def saveImage(self): urlretrieve(self.getImageURL(), "explain.png") # save thumbnail image to png
 
 	def getImageURL(self) -> str:
-		return f"https://liveimg.afreecatv.com/m/{self.afreeca_titleData.loc[self.channel_id, 'chatChannelId']}"
+		return f"https://liveimg.afreecatv.com/m/{self.titleData.loc[self.channel_id, 'chatChannelId']}"
 
 	def turnOnline(self):
 		now_time = self.getStarted_at("openDate")
-		old_time = self.afreeca_titleData.loc[self.channel_id,'update_time']
-		return self.data.live == 1 and self.afreeca_titleData.loc[self.channel_id,'live_state'] == "CLOSE" and now_time > old_time #turn online
+		old_time = self.titleData.loc[self.channel_id,'update_time']
+		return self.data.live == 1 and self.titleData.loc[self.channel_id,'live_state'] == "CLOSE" and now_time > old_time #turn online
 
 	def turnOffline(self):
 		# now_time = self.getStarted_at(state_data)
-		# old_time = self.afreeca_titleData.loc[self.channel_id,'update_time']
-		return self.data.live == 0 and self.afreeca_titleData.loc[self.channel_id,'live_state'] == "OPEN" #turn offline
+		# old_time = self.titleData.loc[self.channel_id,'update_time']
+		return self.data.live == 0 and self.titleData.loc[self.channel_id,'live_state'] == "OPEN" #turn offline

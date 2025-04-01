@@ -13,7 +13,7 @@ class chzzk_live_message():
 		self.DO_TEST = init_var.DO_TEST
 		self.userStateData = init_var.userStateData
 		self.chzzkIDList = init_var.chzzkIDList
-		self.chzzk_titleData = init_var.chzzk_titleData
+		self.titleData = init_var.chzzk_titleData
 		self.channel_id = chzzk_id
 		self.data = base.LiveData()
 
@@ -55,8 +55,8 @@ class chzzk_live_message():
 
 	def _update_title_if_needed(self):
 		if (base.if_after_time(self.data.change_title_time) and 
-			self.chzzk_titleData.loc[self.channel_id,'title2'] != self.chzzk_titleData.loc[self.channel_id,'title1']):
-			self.chzzk_titleData.loc[self.channel_id,'title2'] = self.chzzk_titleData.loc[self.channel_id,'title1']
+			self.titleData.loc[self.channel_id,'title2'] != self.titleData.loc[self.channel_id,'title1']):
+			self.titleData.loc[self.channel_id,'title2'] = self.titleData.loc[self.channel_id,'title1']
 
 	def _get_stream_data(self, state_data):
 		return base.chzzk_getChannelOffStateData(
@@ -122,7 +122,7 @@ class chzzk_live_message():
 
 			list_of_urls = get_list_of_urls(self.DO_TEST, self.userStateData, channel_name, self.channel_id, json_data, db_name)
 			asyncio.create_task(DiscordWebhookSender().send_messages(list_of_urls))
-			await base.save_airing_data(self.chzzk_titleData, 'chzzk', self.channel_id)
+			await base.save_airing_data(self.titleData, 'chzzk', self.channel_id)
 
 		except Exception as e:
 			asyncio.create_task(DiscordWebhookSender._log_error(f"postLiveMSG {e}"))
@@ -152,27 +152,27 @@ class chzzk_live_message():
 			print(f"{now} offLine {channel_name}")
 	
 	def _get_old_title(self):
-		return self.chzzk_titleData.loc[self.c,'title2']
+		return self.titleData.loc[self.c,'title2']
 
 	def onLineTitle(self, message):
 		if message == "뱅온!":
-			self.chzzk_titleData.loc[self.channel_id, 'live_state'] = "OPEN"
-		self.chzzk_titleData.loc[self.channel_id,'title2'] = self.chzzk_titleData.loc[self.channel_id,'title1']
-		self.chzzk_titleData.loc[self.channel_id,'title1'] = self.data.title
+			self.titleData.loc[self.channel_id, 'live_state'] = "OPEN"
+		self.titleData.loc[self.channel_id,'title2'] = self.titleData.loc[self.channel_id,'title1']
+		self.titleData.loc[self.channel_id,'title1'] = self.data.title
 
 	def onLineTime(self, message):
 		if message == "뱅온!":
-			self.chzzk_titleData.loc[self.channel_id,'update_time'] = self.getStarted_at("openDate")
+			self.titleData.loc[self.channel_id,'update_time'] = self.getStarted_at("openDate")
 
 	def offLineTitle(self):
-		self.chzzk_titleData.loc[self.channel_id, 'live_state'] = "CLOSE"
+		self.titleData.loc[self.channel_id, 'live_state'] = "CLOSE"
 
 	def offLineTime(self):
-		self.chzzk_titleData.loc[self.channel_id,'update_time'] = self.getStarted_at("closeDate")
+		self.titleData.loc[self.channel_id,'update_time'] = self.getStarted_at("closeDate")
 
 
 	def ifChangeTitle(self):
-		return self.data.title not in [str(self.chzzk_titleData.loc[self.channel_id,'title1']), str(self.chzzk_titleData.loc[self.channel_id,'title2'])]
+		return self.data.title not in [str(self.titleData.loc[self.channel_id,'title1']), str(self.titleData.loc[self.channel_id,'title2'])]
 
 	async def getOnAirJson(self, message, state_data):
 		channel_url = self.get_channel_url()
@@ -193,9 +193,9 @@ class chzzk_live_message():
 
 	async def get_live_thumbnail_image(self, state_data, message):
 		for count in range(20):
-			time_difference = (datetime.now() - datetime.fromisoformat(self.chzzk_titleData.loc[self.channel_id, 'update_time'])).total_seconds()
+			time_difference = (datetime.now() - datetime.fromisoformat(self.titleData.loc[self.channel_id, 'update_time'])).total_seconds()
 
-			if message == "뱅온!" or self.chzzk_titleData.loc[self.channel_id, 'live_state'] == "CLOSE" or time_difference < 15: 
+			if message == "뱅온!" or self.titleData.loc[self.channel_id, 'live_state'] == "CLOSE" or time_difference < 15: 
 				thumbnail_image = ""
 				break
 
@@ -243,7 +243,7 @@ class chzzk_live_message():
 		# 		"embeds": [
 		# 			{"color": int(self.chzzkIDList.loc[chzzkID, 'channel_color']),
 		# 			"fields": [
-		# 				{"name": "이전 방제", "value": str(self.chzzk_titleData.loc[chzzkID,'title1']), "inline": True},
+		# 				{"name": "이전 방제", "value": str(self.titleData.loc[chzzkID,'title1']), "inline": True},
 		# 				{"name": "현재 방제", "value": title, "inline": True},
 		# 				{"name": ':busts_in_silhouette: 시청자수',
 		# 				"value": viewer_count, "inline": True}],
@@ -258,7 +258,7 @@ class chzzk_live_message():
 				"embeds": [
 					{"color": int(self.chzzkIDList.loc[self.channel_id, 'channel_color']),
 					"fields": [
-						{"name": "이전 방제", "value": str(self.chzzk_titleData.loc[self.channel_id,'title1']), "inline": True},
+						{"name": "이전 방제", "value": str(self.titleData.loc[self.channel_id,'title1']), "inline": True},
 						{"name": "현재 방제", "value": self.data.title, "inline": True}],
 					"title":  f"{self._get_channel_name()} {message}\n",
 				"url": url}]}
@@ -322,7 +322,7 @@ class chzzk_live_message():
 		return link
 
 	def checkStateTransition(self, target_state: str):
-		if self.data.live != target_state or self.chzzk_titleData.loc[self.channel_id, 'live_state'] != ("CLOSE" if target_state == "OPEN" else "OPEN"):
+		if self.data.live != target_state or self.titleData.loc[self.channel_id, 'live_state'] != ("CLOSE" if target_state == "OPEN" else "OPEN"):
 			return False
-		return self.getStarted_at(("openDate" if target_state == "OPEN" else "closeDate")) > self.chzzk_titleData.loc[self.channel_id, 'update_time']
+		return self.getStarted_at(("openDate" if target_state == "OPEN" else "closeDate")) > self.titleData.loc[self.channel_id, 'update_time']
 		

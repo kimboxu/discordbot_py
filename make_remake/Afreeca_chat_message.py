@@ -33,7 +33,7 @@ class AfreecaChat:
         self.userStateData = init_var.userStateData
         self.afreecaIDList = init_var.afreecaIDList
         self.afreeca_chatFilter = init_var.afreeca_chatFilter
-        self.afreeca_titleData = init_var.afreeca_titleData
+        self.titleData = init_var.afreeca_titleData
         self.chat_json = init_var.chat_json
 
         self.ssl_context = self.create_ssl_context()
@@ -59,11 +59,11 @@ class AfreecaChat:
             if self.chat_json[self.data.channel_id]: 
                 base.change_chat_join_state(self.chat_json, self.data.channel_id, False)
 
-            if self.afreeca_titleData.loc[self.data.channel_id,'live_state'] == "CLOSE" or await self.check_is_passwordDict():
+            if self.titleData.loc[self.data.channel_id,'live_state'] == "CLOSE" or await self.check_is_passwordDict():
                 await asyncio.sleep(5)
                 continue
 
-            self.data.BNO = self.afreeca_titleData.loc[self.data.channel_id, 'chatChannelId']
+            self.data.BNO = self.titleData.loc[self.data.channel_id, 'chatChannelId']
             self.data.BID = self.afreecaIDList["afreecaID"][self.data.channel_id]
 
             channel_data = self.afreeca_getChannelStateData()
@@ -121,7 +121,7 @@ class AfreecaChat:
             
             await self.data.sock.send(CONNECT_PACKET)
 
-            chatChannelId = self.afreeca_titleData.loc[self.data.channel_id, 'chatChannelId']
+            chatChannelId = self.titleData.loc[self.data.channel_id, 'chatChannelId']
             asyncio.create_task(DiscordWebhookSender._log_error(f"{self.data.channel_id} 연결 완료 {chatChannelId}", webhook_url=environ['chat_post_url']))
 
             await asyncio.sleep(2)
