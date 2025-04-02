@@ -179,8 +179,11 @@ class afreeca_chat_message:
                 continue
             
             user_id, chat, nickname = messages[2], messages[1], messages[6]
+            chat_type = "채팅"
 
             user_id = user_id.split("(")[0]
+
+            print(f"{datetime.now()} [{chat_type} - {self.data.channel_name}] {nickname}: {chat}")
 
             if user_id not in [*self.init.afreeca_chatFilter["channelID"]]: 
                 continue
@@ -188,22 +191,22 @@ class afreeca_chat_message:
             user_nick, profile_image = await self._get_user_info(user_id)
             if nickname != user_nick:
                 continue
-                
+ 
             # 메시지 중복 체크
-            self._process_new_message(nickname, chat, profile_image)
+            self._process_new_message(nickname, chat, profile_image, chat_type)
 
     async def _post_chat(self): #send to chatting message
         while not self.data.sock.closed:
             try:
                 await self.data.chat_event.wait()
 
-                name, chat, profile_image = self.data.afreeca_chat_msg_List.pop(0)
-                json_data = get_json_data(name, chat, self.data.channel_name, profile_image)
+                nickname, chat, profile_image, chat_type = self.data.afreeca_chat_msg_List.pop(0)
+                json_data = get_json_data(nickname, chat, self.data.channel_name, profile_image)
                                 
-                list_of_urls = get_list_of_urls(self.init.DO_TEST, self.init.userStateData, name, self.data.channel_id, json_data, "chat_user_json")
+                list_of_urls = get_list_of_urls(self.init.DO_TEST, self.init.userStateData, nickname, self.data.channel_id, json_data, "chat_user_json")
                 asyncio.create_task(DiscordWebhookSender().send_messages(list_of_urls))
             
-                print(f"{datetime.now()} post chat")
+                print(f"{datetime.now()} post chat [{chat_type} - {self.data.channel_name}] {nickname}: {chat}")
                 self.data.chat_event.clear()
 
             except Exception as e:
@@ -221,7 +224,7 @@ class afreeca_chat_message:
         _, _, profile_image = base.afreeca_getChannelOffStateData(stateData, stateData["station"]["user_id"])
         return user_nick, profile_image
 
-    def _process_new_message(self, nickname, chat, profile_image):
+    def _process_new_message(self, nickname, chat, profile_image, chat_type):
         message_id = f"{chat}_{time()}"
         
         # 이미 처리된 메시지인지 확인
@@ -237,11 +240,9 @@ class afreeca_chat_message:
             self.data.processed_messages.pop(0)
         
         # 메시지 추가 및 이벤트 설정
-        self.data.afreeca_chat_msg_List.append([nickname, chat, profile_image])
+        self.data.afreeca_chat_msg_List.append([nickname, chat, profile_image, chat_type])
+
         self.data.chat_event.set()
-    
-        # 로그 출력
-        print(f"{datetime.now()} [채팅 - {self.data.channel_name}] {nickname}: {chat}")
 
     def _is_invalid_message(self, messages):
         #메시지가 유효하지 않은지 확인
