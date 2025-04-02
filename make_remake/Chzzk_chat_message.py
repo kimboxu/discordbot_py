@@ -435,9 +435,9 @@ class chzzk_chat_message:
                 month = extras["month"]
                 tierName = extras["tierName"] #구독 티어 이름
                 tierNo = extras["tierNo"]   #구독 티어 
-                return  # 도네이션 금액이 없는 경우 처리하지 않음
+                return  "print_msg 구독 메시지(추후 추가 예정)" # 도네이션 금액이 없는 경우 처리하지 않음
             else:
-                return
+                return "print_msg 어떤 메시지인지 현재는 확인X"
 
         else:
             msg = chat_data['msg'] if chat_type == "채팅" else chat_data['content']
