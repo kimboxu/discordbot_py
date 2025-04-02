@@ -76,7 +76,7 @@ async def chzzk_chatf(init: base.initVar):
                     chat_instance = chzzk_chat_message(init, channel_id)
                     tasks[channel_id] = asyncio.create_task(chat_instance.start())
 
-            await asyncio.sleep(1)  # 5초마다 체크 (필요하면 조절 가능)
+            await asyncio.sleep(1)  # 1초마다 체크 (필요하면 조절 가능)
         
         except Exception as e:
             print(f"{datetime.now()} error chzzk_chatf {e}")
@@ -95,7 +95,7 @@ async def afreeca_chatf(init: base.initVar):
                     chat_instance = afreeca_chat_message(init, channel_id)
                     tasks[channel_id] = asyncio.create_task(chat_instance.start())
 
-            await asyncio.sleep(1)  # 5초마다 체크 (필요하면 조절 가능)
+            await asyncio.sleep(1)  # 1초마다 체크 (필요하면 조절 가능)
         
         except Exception as e:
             print(f"{datetime.now()} error afreeca_chatf {e}")
