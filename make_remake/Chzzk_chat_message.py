@@ -202,7 +202,7 @@ class chzzk_chat_message:
                 if not self.init.DO_TEST and (chat_type == "후원" or nickname in [*self.init.chzzk_chatFilter["channelName"]]):
                     asyncio.create_task(DiscordWebhookSender._log_error(self.print_msg(chat_data, chat_type), webhook_url=environ['donation_post_url']))
 
-                if not(nickname in [*self.init.chzzk_chatFilter["channelName"]]):
+                elif not(nickname in [*self.init.chzzk_chatFilter["channelName"]]):
                     print(f"{datetime.now()} {self.print_msg(chat_data, chat_type)}")
 
                 if nickname not in [*self.init.chzzk_chatFilter["channelName"]]: #chzzk_chatFilter에 없는 사람 채팅은 제거
