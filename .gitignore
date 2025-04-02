@@ -190,6 +190,9 @@ Twitch_live_message.py
 templates/
 templates/**
 
+
+flutter_application_1/
+
 # GitHub Actions workflow
 .github/workflows/deploy.yml
 
