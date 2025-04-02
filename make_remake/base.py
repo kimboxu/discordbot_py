@@ -6,7 +6,8 @@ from json import loads
 from queue import Queue
 import pandas as pd
 from requests import post, get
-from requests.exceptions import HTTPError, ReadTimeout, ConnectTimeout, SSLError, RemoteDisconnected
+from requests.exceptions import HTTPError, ReadTimeout, ConnectTimeout, SSLError
+from http.client import RemoteDisconnected
 from timeit import default_timer
 from dataclasses import dataclass, field
 from supabase import create_client
