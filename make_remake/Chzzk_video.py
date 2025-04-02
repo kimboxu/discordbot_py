@@ -137,13 +137,14 @@ class chzzk_video:
     
     async def chzzk_saveVideoData(self): #save profile data
         idx = {chzzk: i for i, chzzk in enumerate(self.chzzk_video["channelID"])}
+        data = {
+            "idx": idx[self.chzzk_id],
+            'VOD_json': self.chzzk_video.loc[self.chzzk_id, 'VOD_json']
+        }
         for _ in range(3):
             try:
 
-                self.supabase.table('chzzk_video').upsert({
-                    "idx": idx[self.chzzk_id],
-                    'VOD_json': self.chzzk_video.loc[self.chzzk_id, 'VOD_json']
-                }).execute()
+                self.supabase.table('chzzk_video').upsert(data).execute()
                 break
             except Exception as e:
                 asyncio.create_task(DiscordWebhookSender._log_error(f"error saving profile data {e}"))
