@@ -6,7 +6,7 @@ from json import loads
 from queue import Queue
 import pandas as pd
 from requests import post, get
-from requests.exceptions import HTTPError, ReadTimeout, ConnectTimeout, SSLError
+from requests.exceptions import HTTPError, ReadTimeout, ConnectTimeout, SSLError, RemoteDisconnected
 from timeit import default_timer
 from dataclasses import dataclass, field
 from supabase import create_client
@@ -493,19 +493,23 @@ async def get_message(platform, link):
 				# 성공적인 응답을 받았으므로 처리 후 반환
 				return config["response_handler"](response)
 				
-			except (ConnectTimeout, ReadTimeout, ConnectionError, HTTPError) as e:
+			except (ConnectTimeout, ReadTimeout, ConnectionError, HTTPError, RemoteDisconnected) as e:
 				# 연결 관련 예외 발생 시 재시도
 				retry_count += 1
 				error_type = type(e).__name__
 				error_msg = f"API 요청 타임아웃/연결 오류 (시도 {retry_count}/{max_retries}): {platform} - {error_type}: {str(e)}"
 				if retry_count >= max_retries: asyncio.create_task(DiscordWebhookSender._log_error(error_msg))
 				# else: print(error_msg)
-				
-				if retry_count < max_retries:
-					await asyncio.sleep(retry_delay)
-					# 재시도 간격을 지수적으로 증가 (지수 백오프)
-					retry_delay *= 2
+
+				# 연결 종료 에러의 경우 추가 대기 시간 부여
+				if "RemoteDisconnected" in error_type or "Connection aborted" in str(e):
+					await asyncio.sleep(retry_delay * 1.5)  # 일반 재시도보다 더 길게 대기
 				else:
+					await asyncio.sleep(retry_delay)
+				
+				retry_delay *= 2
+
+				if retry_count >= max_retries:
 					return {}
 				
 			except SSLError as ssl_err:
