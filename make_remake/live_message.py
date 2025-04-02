@@ -239,7 +239,7 @@ class chzzk_live_message(base_live_message):
     
     def _is_valid_state_data(self, state_data):
         try:
-            return state_data["code"] == 200
+            return state_data and state_data["code"] == 200
         except Exception as e:
             if len(state_data) > 200: state_data = state_data[:200]
             asyncio.create_task(DiscordWebhookSender._log_error(f"{datetime.now()} _is_valid_state_data.{self.channel_id}.{e}.{state_data}"))
