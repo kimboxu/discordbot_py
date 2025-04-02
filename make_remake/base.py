@@ -34,17 +34,6 @@ class initVar:
 	print("start!")
 
 @dataclass
-class chzzkVideoData:
-	video_alarm_List: list = field(default_factory=list)
-
-@dataclass
-class youtubeVideoData:
-	video_count_check_dict: dict
-	developerKeyDict: dict
-	TFdeveloperKey: int = 0
-	youtubeChannelIdx: int = 0
-
-@dataclass
 class iconLinkData:
 	chzzk_icon: str = environ['CHZZK_ICON']
 	afreeca_icon: str = environ['AFREECA_ICON']
@@ -338,7 +327,7 @@ def getTwitchHeaders():
 						"&grant_type=client_credentials")
 	authorization = 'Bearer ' + loads(oauth_key.text)["access_token"]
 	return {'client-id': twitch_Client_ID, 'Authorization': authorization} #get headers 
-def getChzzkHeaders(): return {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'} #get headers 
+def getDefaultHeaders(): return {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'} #get headers 
 def getChzzkCookie(): return {'NID_AUT': environ['NID_AUT'],'NID_SES':environ['NID_SES']} 
 def cafe_params(cafeNum, page_num):
 	return {
@@ -407,7 +396,13 @@ async def get_message(platform, link):
 			"needs_params": True,
 			"url_formatter": lambda link, cafe_num: link,
 			"response_handler": lambda response: loads(response.text)
-		}
+		},
+		"youtube": {
+			"needs_cookies": False,
+			"needs_params": False,
+			"url_formatter": link,
+			"response_handler": lambda response: response.text
+		},
 	}
 	
 	try:
@@ -423,11 +418,12 @@ async def get_message(platform, link):
 		
 		# 플랫폼별 헤더 설정
 		if platform == "chzzk":
-			headers = getChzzkHeaders()
+			headers = getDefaultHeaders()
 		elif platform == "twitch":
 			headers = getTwitchHeaders()  # 트위치 인증 헤더 (별도 구현 필요)
 		else:
-			headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"}
+			headers = getDefaultHeaders()
+			
 		
 		request_kwargs["headers"] = headers
 		
@@ -571,7 +567,7 @@ async def get_message(platform, link):
 
 # async def cafe_get_url_json(session, args):
 # 	url, params = args[0], args[1]
-# 	headers = getChzzkHeaders()
+# 	headers = getDefaultHeaders()
 # 	try:
 # 		async with session.get(url, params=params, headers=headers, timeout=3) as response:
 # 			return [await response.json(), True]
