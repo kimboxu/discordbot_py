@@ -1,7 +1,8 @@
 import asyncio
 from datetime import datetime
 from discord_webhook_sender import DiscordWebhookSender, get_list_of_urls
-from base import changeUTCtime, get_message, chzzkVideoData, iconLinkData, initVar
+from base import changeUTCtime, get_message, iconLinkData, initVar
+
 
 class chzzk_video:
     def __init__(self, init_var: initVar, chzzk_id):
@@ -11,9 +12,9 @@ class chzzk_video:
         self.chzzk_video = init_var.chzzk_video
         self.userStateData = init_var.userStateData
         self.chzzk_id = chzzk_id
-        self.data = chzzkVideoData()
 
     async def start(self):
+        self.video_alarm_List: list = []
         await self.check_chzzk_video()
         await self.post_chzzk_video()
 
@@ -39,12 +40,15 @@ class chzzk_video:
     async def _process_video_data(self, stateData):
         videoNo, videoTitle, publishDate, thumbnailImageUrl, _ = self.getChzzkState(stateData)
         
-        if self.check_new_video(videoNo, publishDate, thumbnailImageUrl):
+        if not self.check_new_video(videoNo, publishDate, thumbnailImageUrl):
             return
         # 비디오 데이터 처리 및 저장
         json_data = self.getChzzk_video_json(stateData)
-        self.data.video_alarm_List.append((json_data, videoTitle))
-        await self.chzzk_saveVideoData(videoNo, publishDate)
+        self._update_videoNo_list(self.chzzk_video.loc[self.chzzk_id, 'VOD_json'], videoNo)
+        self.chzzk_video.loc[self.chzzk_id, 'VOD_json']["publishDate"] = publishDate
+
+        self.video_alarm_List.append((json_data, videoTitle))
+        await self.chzzk_saveVideoData()
 
     def check_new_video(self, videoNo, publishDate, thumbnailImageUrl):
         # 이미 처리된 비디오 건너뛰기
@@ -53,27 +57,26 @@ class chzzk_video:
 
         if (publishDate <= old_publishDate or 
             videoNo in videoNo_list):
-            return True
+            return False
 
         # 썸네일 URL 검증
         if not thumbnailImageUrl or "https://video-phinf.pstatic.net" not in thumbnailImageUrl:
-            return True
+            return False
+        return True
  
     async def post_chzzk_video(self):
         try:
-            if not self.data.video_alarm_List:
+            if not self.video_alarm_List:
                 return
-            
-            for json_data, videoTitle in self.data.video_alarm_List:
-                channel_name = self.chzzkIDList.loc[self.chzzk_id, 'channelName']
-                print(f"{datetime.now()} VOD upload {channel_name} {videoTitle}")
+            json_data, videoTitle = self.video_alarm_List.pop(0)
+            channel_name = self.chzzkIDList.loc[self.chzzk_id, 'channelName']
+            print(f"{datetime.now()} VOD upload {channel_name} {videoTitle}")
 
-                list_of_urls = get_list_of_urls(self.DO_TEST, self.userStateData, channel_name, self.chzzk_id, json_data, "치지직 VOD")
-                asyncio.create_task(DiscordWebhookSender().send_messages(list_of_urls))
+            list_of_urls = get_list_of_urls(self.DO_TEST, self.userStateData, channel_name, self.chzzk_id, json_data, "치지직 VOD")
+            asyncio.create_task(DiscordWebhookSender().send_messages(list_of_urls))
 
         except Exception as e:
             asyncio.create_task(DiscordWebhookSender._log_error(f"postLiveMSG {e}"))
-            self.data.video_alarm_List.clear()
 
     def getChzzk_video_json(self, stateData):
         videoNo, videoTitle, publishDate, thumbnailImageUrl, videoCategoryValue = self.getChzzkState(stateData)
@@ -132,12 +135,10 @@ class chzzk_video:
             data["videoCategoryValue"]
         )
     
-    async def chzzk_saveVideoData(self, videoNo, publishDate): #save profile data
+    async def chzzk_saveVideoData(self): #save profile data
         idx = {chzzk: i for i, chzzk in enumerate(self.chzzk_video["channelID"])}
         for _ in range(3):
             try:
-                self._update_videoNo_list(self.chzzk_video.loc[self.chzzk_id, 'VOD_json'], videoNo)
-                self.chzzk_video.loc[self.chzzk_id, 'VOD_json']["publishDate"] = publishDate
 
                 self.supabase.table('chzzk_video').upsert({
                     "idx": idx[self.chzzk_id],
