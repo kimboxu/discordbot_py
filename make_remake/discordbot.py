@@ -16,7 +16,6 @@ from discord_webhook_sender import DiscordWebhookSender
 
 from live_message import chzzk_live_message, afreeca_live_message
 
-    
 async def main_loop(init: base.initVar):
 
     while True:
@@ -43,64 +42,61 @@ async def main_loop(init: base.initVar):
             asyncio.create_task(DiscordWebhookSender._log_error(f"Error in main loop: {str(e)}"))
             await asyncio.sleep(1)
 
-
-async def fyoutube(init: base.initVar):
+async def youtube_task(init):
     await asyncio.sleep(2)
-    youtubeVideo = base.youtubeVideoData(
-        video_count_check_dict={},
-        developerKeyDict = environ['developerKeyList'].split(","))
-    
+
+    developer_keys = environ['developerKeyList'].split(",")
+    key_index = 0
     while True:
         try:
-            if not init.youtube_TF: await asyncio.sleep(3);continue
-            start_time = time()
-            await asyncio.create_task(getYoutubeJsonData().fYoutube(init, youtubeVideo))
-            end_time = time()
-            sleepTime = 0
-            if end_time - start_time < 3.00: sleepTime = 3.00 - (end_time - start_time)
-            await asyncio.sleep(sleepTime)
-        except Exception as e: 
-            print(f"{datetime.now()} error fyoutube {e}")
+            for youtubeChannelID in init.youtubeData["YoutubeChannelID"]:
+                if not init.youtube_TF:
+                    await asyncio.sleep(3)
+                    continue
+                    
+                start_time = time()
+                
+                # 작업 실행
+                developerKey = developer_keys[key_index]
+                await asyncio.create_task(getYoutubeJsonData(init, developerKey, youtubeChannelID).start())
+                
+                # 다음 키로 순환
+                key_index = (key_index + 1) % len(developer_keys)
+                
+                # 정확히 3초 간격 유지
+                elapsed_time = time() - start_time
+                await asyncio.sleep(max(3 - elapsed_time, 0))
+            
+        except Exception as e:
+            print(f"{datetime.now()} YouTube 작업 오류: {e}")
             await asyncio.sleep(3)
 
-async def chzzk_chatf(init: base.initVar):
+async def generic_chat(init: base.initVar, platform_name: str, message_class):
     await asyncio.sleep(2)
     
     tasks = {}  # 채널 ID별 실행 중인 task를 관리할 딕셔너리
-
-    while True:
-        try:
-            # 기존 실행 중인 태스크를 유지하면서, 새로운 채널이 추가되면 실행
-            for channel_id in init.chzzkIDList["channelID"]:
-                if channel_id not in tasks or tasks[channel_id].done():
-                    chat_instance = chzzk_chat_message(init, channel_id)
-                    tasks[channel_id] = asyncio.create_task(chat_instance.start())
-
-            await asyncio.sleep(1)  # 1초마다 체크 (필요하면 조절 가능)
-        
-        except Exception as e:
-            print(f"{datetime.now()} error chzzk_chatf {e}")
-            await asyncio.sleep(1)
-
-async def afreeca_chatf(init: base.initVar):
-    await asyncio.sleep(2)
     
-    tasks = {}  # 채널 ID별 실행 중인 task를 관리할 딕셔너리
-
     while True:
         try:
+            # ID 리스트 결정
+            if platform_name == 'chzzk':
+                id_list = init.chzzkIDList
+            elif platform_name == 'afreeca':
+                id_list = init.afreecaIDList
+            
             # 기존 실행 중인 태스크를 유지하면서, 새로운 채널이 추가되면 실행
-            for channel_id in init.afreecaIDList["channelID"]:
+            for channel_id in id_list["channelID"]:
                 if channel_id not in tasks or tasks[channel_id].done():
-                    chat_instance = afreeca_chat_message(init, channel_id)
+                    chat_instance = message_class(init, channel_id)
                     tasks[channel_id] = asyncio.create_task(chat_instance.start())
-
+            
             await asyncio.sleep(1)  # 1초마다 체크 (필요하면 조절 가능)
         
         except Exception as e:
-            print(f"{datetime.now()} error afreeca_chatf {e}")
+            print(f"{datetime.now()} error {platform_name}_chatf {e}")
+            await asyncio.create_task(DiscordWebhookSender._log_error(f"Error in {platform_name}_chatf: {str(e)}"))
             await asyncio.sleep(1)
- 
+
 async def main():
     init = base.initVar()
     await base.discordBotDataVars(init)
@@ -108,11 +104,11 @@ async def main():
     await asyncio.sleep(1)
     
     test = [
-            asyncio.create_task(main_loop(init)),
-            asyncio.create_task(afreeca_chatf(init)),
-            asyncio.create_task(chzzk_chatf(init)),
-            asyncio.create_task(fyoutube(init)),
-            ]
+        asyncio.create_task(main_loop(init)),
+        asyncio.create_task(generic_chat(init, 'afreeca', afreeca_chat_message)),
+        asyncio.create_task(generic_chat(init, 'chzzk', chzzk_chat_message)),
+        asyncio.create_task(youtube_task(init)),
+    ]
     
     await asyncio.gather(*test)
         

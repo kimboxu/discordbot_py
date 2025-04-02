@@ -1,13 +1,12 @@
 import asyncio
 import aiohttp
 from os import environ
-from requests import get
 from datetime import datetime
 from supabase import create_client
 from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
-from discord_webhook_sender import DiscordWebhookSender
-from base import subjectReplace, getChzzkHeaders, youtubeVideoData, iconLinkData, initVar
+from googleapiclient.errors import HttpError, Error
+from discord_webhook_sender import DiscordWebhookSender, get_list_of_urls
+from base import subjectReplace, iconLinkData, initVar, get_message
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 from dataclasses import dataclass
@@ -38,187 +37,225 @@ class YouTubeVideoBatch:
         )
 
 class getYoutubeJsonData:
-	async def fYoutube(self, init: initVar, youtubeVideo: youtubeVideoData):
+	def __init__(self, init_var: initVar, developerKey, youtubeChannelID):
+		self.developerKey = developerKey
+		self.init = init_var
+		self.DO_TEST = init_var.DO_TEST
+		self.userStateData = init_var.userStateData
+		self.youtubeData = init_var.youtubeData
+		self.chzzkIDList = init_var.chzzkIDList
+		self.afreecaIDList = init_var.afreecaIDList
+		self.twitchIDList = init_var.twitchIDList
+		self.youtubeChannelID = youtubeChannelID
+		self.youtubechannelName = init_var.youtubeData.loc[youtubeChannelID, 'channelName']
+
+	async def start(self):
 		try:
-			for _ in range(1):
-				youtubeVideo.youtubeChannelIdx = int((youtubeVideo.youtubeChannelIdx + 1) % (init.youtubeData["idx"].max()+1))
-				# youtubeChannelID = list(init.youtubeData["YoutubeChannelID"])[youtubeVideo.youtubeChannelIdx]
-				youtubeChannelID = init.youtubeData["YoutubeChannelID"].iloc[youtubeVideo.youtubeChannelIdx]
-		
-				if youtubeChannelID not in youtubeVideo.video_count_check_dict:
-					youtubeVideo.video_count_check_dict[youtubeChannelID] = 0
-
-				json_responses = await self.ifYoutubeJson(init, youtubeVideo, youtubeChannelID)
-
-				if json_responses[0] is not None:
-					youtubeVideo.video_count_check_dict[youtubeChannelID] = 0
-
-					for json_data in reversed(json_responses):
-						if json_data is not None:
-							await DiscordWebhookSender().send_messages(self.makeList_of_urls(init, json_data, youtubeChannelID))
-							# await async_post_message(self.makeList_of_urls(init, json_data, youtubeChannelID))
-							print(f'{datetime.now()} {json_data["username"]}: {json_data["embeds"][0]["title"]}')
-							await asyncio.sleep(0.5)
-
-					self.saveYoutubeData(init, youtubeVideo, youtubeChannelID) #save video count
-			
+			self.new_video_json_data_list = []
+			await self.check_youtube()
+			await self.post_youtube()
+	
 		except Exception as e:
 			if "RetryError" not in str(e):
-				asyncio.create_task(DiscordWebhookSender._log_error(f"fYoutube {youtubeChannelID}: {str(e)}"))
+				asyncio.create_task(DiscordWebhookSender._log_error(f"fYoutube {self.youtubeChannelID}: {str(e)}"))
+			
+	async def check_youtube(self):
+		youtube_build = self.get_youtube_build()
+		if youtube_build is None: 
+			return
+		
+		channel_response = await self.get_youtube_channels_response(youtube_build)
+
+		# 응답이 없거나 items가 비어있는 경우 처리
+		if not self.check_item((channel_response)):
+			print(f"{datetime.now()} No valid response for channel {self.youtubeChannelID}")
+			return
+
+		video_count = self.get_video_count(channel_response)
+
+		if self.check_none_new_video():
+			self.youtubeData.loc[self.youtubeChannelID, "videoCount"] += 1
+			self.youtubeData.loc[self.youtubeChannelID, "video_count_check"] = 0
+			#videoCount, video_count_check 만 저장하도록 수정하기
+			self.saveYoutubeData()
+			
+		if self.check_new_video(video_count):
+			self.youtubeData.loc[self.youtubeChannelID, "video_count_check"] += 1
+			await self.get_youtube_thumbnail_url()
+
+			search_response = await self.get_youtube_search_response(youtube_build)
+			await self.filter_video(search_response, video_count)
+		
+		elif self.check_del_video(video_count):
+			if video_count - self.youtubeData.loc[self.youtubeChannelID, "videoCount"] < 3:
+				self.youtubeData.loc[self.youtubeChannelID, "videoCount"] -= 1
+				#videoCount 만 저장하도록 수정하기
+				self.saveYoutubeData()
+
+	async def post_youtube(self):
+		if self.new_video_json_data_list:
+			self.youtubeData.loc[self.youtubeChannelID, "video_count_check"] = 0
+
+			for json_data in reversed(self.new_video_json_data_list):
+				if json_data is not None:
+					list_of_urls = get_list_of_urls(self.DO_TEST, self.userStateData, self.youtubechannelName, self.youtubeChannelID, json_data, "유튜브 알림")
+					await DiscordWebhookSender().send_messages(list_of_urls)
+					print(f'{datetime.now()} {json_data["username"]}: {json_data["embeds"][0]["title"]}')
+					await asyncio.sleep(0.5)
+			# 다 저장 하도록 수정하기
+			self.saveYoutubeData() #save video count
 			
 	@retry(stop=stop_after_attempt(5), 
 		wait=wait_exponential(multiplier=1, min=2, max=5),
 		retry=retry_if_exception_type((asyncio.TimeoutError, ConnectionError)))
-	async def ifYoutubeJson(self, init: initVar, youtubeVideo: youtubeVideoData, youtubeChannelID: str):
+	def get_youtube_build(self):
 		try:
-			youtube = build('youtube', 'v3', 
-				   developerKey=youtubeVideo.developerKeyDict[youtubeVideo.TFdeveloperKey], 
-				   cache_discovery=False)
-			youtubeVideo.TFdeveloperKey = (youtubeVideo.TFdeveloperKey + 1) % len(youtubeVideo.developerKeyDict)
-		
-			try:
-				channel_response = await asyncio.wait_for(
-					asyncio.get_event_loop().run_in_executor(
-						None,
-						youtube.channels().list(
-							part='statistics', 
-							id=init.youtubeData.loc[youtubeChannelID, "channelCode"]
-						).execute
-					),
-					timeout=3
-				)
-			except HttpError as e:
-				if e.resp.status == 503:
-					# 503 에러는 일시적인 서버 문제이므로 무시
-					print(f"{datetime.now()} YouTube API 일시적 오류 (채널: {youtubeChannelID})")
-					return None, None, None
-				raise  # 다른 HTTP 에러는 그대로 발생
-			except asyncio.TimeoutError:
-				print(f"{datetime.now()} Channel response timeout for {youtubeChannelID}")
-				return None, None, None
-			except Exception as e:
-				asyncio.create_task(DiscordWebhookSender._log_error(f"error channel_response {e}"))
-				return None, None, None
+			youtube_build = build('youtube', 'v3', 
+							developerKey=self.developerKey,
+							cache_discovery=False)
+			# API 객체 생성 성공
+			return youtube_build
+		except HttpError as e:
+			# HTTP 관련 오류 (403 Forbidden, 429 Too Many Requests 등)
+			asyncio.create_task(DiscordWebhookSender._log_error(f"YouTube API HTTP 오류: {e.resp.status} {e.content}"))
+			if e.resp.status in [403, 429]:
+				asyncio.create_task(DiscordWebhookSender._log_error("API 키 할당량이 초과되었거나 권한이 없습니다."))
+			return None
+		except Error as e:
+			# Google API 클라이언트 관련 오류
+			asyncio.create_task(DiscordWebhookSender._log_error(f"Google API 클라이언트 오류: {e}"))
+			return None
+		except Exception as e:
+			# 기타 예상치 못한 오류
+			asyncio.create_task(DiscordWebhookSender._log_error(f"YouTube API build 오류: {e}"))
+			return None
 
-			# 응답이 없거나 items가 비어있는 경우 처리
-			if not channel_response or 'items' not in channel_response or not channel_response['items']:
-				print(f"{datetime.now()} No valid response for channel {youtubeChannelID}")
-				return None, None, None
+	@retry(stop=stop_after_attempt(5), 
+		wait=wait_exponential(multiplier=1, min=2, max=5),
+		retry=retry_if_exception_type((asyncio.TimeoutError, ConnectionError)))
+	async def get_youtube_channels_response(self, youtube_build):
+		try:
+			channel_response = await asyncio.wait_for(
+				asyncio.get_event_loop().run_in_executor(
+					None,
+					youtube_build.channels().list(
+						part='statistics', 
+						id=self.youtubeData.loc[self.youtubeChannelID, "channelCode"]
+					).execute
+				),
+				timeout=3
+			)
+			return channel_response
+		except HttpError as e:
+			if e.resp.status == 503:
+				# 503 에러는 일시적인 서버 문제
+				print(f"{datetime.now()} YouTube API 일시적 오류 (채널: {self.youtubeChannelID})")
+			raise  # 다른 HTTP 에러는 그대로 발생
+		except asyncio.TimeoutError:
+			print(f"{datetime.now()} Channel response timeout for {self.youtubeChannelID}")
+			raise
+		except Exception as e:
+			asyncio.create_task(DiscordWebhookSender._log_error(f"error channel_response {e}"))
+			return
 
-			video_count = int(channel_response['items'][0]['statistics']['videoCount'])
-			current_count = init.youtubeData.loc[youtubeChannelID, "videoCount"]
-
-			if youtubeVideo.video_count_check_dict[youtubeChannelID] > 3:
-				current_count += 1
-				await self._update_video_count(init, youtubeVideo, youtubeChannelID, current_count)
-				youtubeVideo.video_count_check_dict[youtubeChannelID] = 0
-
-			try:
-				if current_count < video_count:
-					youtubeVideo.video_count_check_dict[youtubeChannelID] += 1
-					self.get_youtube_thumbnail_url(init, youtubeChannelID)
-					response = youtube.search().list(
+	@retry(stop=stop_after_attempt(5), 
+		wait=wait_exponential(multiplier=1, min=2, max=5), 
+		retry=retry_if_exception_type((asyncio.TimeoutError, ConnectionError, HttpError)))
+	async def get_youtube_search_response(self, youtube_build):
+		try:
+			search_response = await asyncio.wait_for(
+				asyncio.get_event_loop().run_in_executor(
+					None,
+					youtube_build.search().list(
 						part="id,snippet", 
-						channelId=init.youtubeData.loc[youtubeChannelID, "channelCode"], 
+						channelId=self.youtubeData.loc[self.youtubeChannelID, "channelCode"], 
 						order="date", 
 						type="video", 
 						maxResults=3
-					).execute()
-
-					newVideo, jsonList = await self.ifNewVideo(init, youtubeVideo, youtubeChannelID, response, video_count)
-					return self._prepare_response(newVideo, jsonList)
-				
-				elif current_count > video_count:
-					if video_count - current_count < 3:
-						current_count -= 1
-						await self._update_video_count(init, youtubeVideo, youtubeChannelID, current_count)
-					# asyncio.create_task(DiscordWebhookSender._log_error(f"down video count {youtubeChannelID} {init.youtubeData.loc[youtubeChannelID, 'videoCount'] + 1} - {video_count}"))
-				return None, None, None
-			except asyncio.TimeoutError:
-				raise
-			except Exception as e:
-				asyncio.create_task(DiscordWebhookSender._log_error(f"ifYoutubeJson3: {youtubeChannelID}.{str(e)}"))
-				return None, None, None
-				
+					).execute
+				),
+				timeout=3
+			)
+			return search_response
+		except HttpError as e:
+			if e.resp.status == 503:
+				print(f"{datetime.now()} YouTube API 일시적 오류 (채널 검색: {self.youtubeChannelID})")
+			raise  # 모든 HTTP 에러는 재시도를 위해 다시 발생시킴
+		except asyncio.TimeoutError:
+			print(f"{datetime.now()} Search response timeout for {self.youtubeChannelID}")
+			raise
 		except Exception as e:
-			asyncio.create_task(DiscordWebhookSender._log_error(f"ifYoutubeJson3: {youtubeChannelID}.{str(e)}"))
-			return None, None, None
-				
-	async def _update_video_count(self, init: initVar, youtubeVideo: youtubeVideoData, youtubeChannelID: str, count: int):
-		init.youtubeData.loc[youtubeChannelID, "videoCount"] = count
-		supabase = create_client(environ['supabase_url'], environ['supabase_key'])
-		supabase.table('youtubeData').upsert({
-			"idx": youtubeVideo.youtubeChannelIdx,
-			"videoCount": int(count)
-		}).execute()
-		await asyncio.sleep(0.05)
+			asyncio.create_task(DiscordWebhookSender._log_error(f"error search_response {e}"))
+			return
 
-	def _prepare_response(self, newVideo: int, jsonList: list):
-		if newVideo == 3:
-			return jsonList[0], jsonList[1], jsonList[2]
-		if newVideo == 2:
-			return jsonList[0], jsonList[1], None
-		if newVideo == 1:
-			return jsonList[0], None, None
-		return None, None, None
+	def check_item(self, channel_response):
+		return channel_response or 'items' not in channel_response or not channel_response['items']
 
-	async def ifNewVideo(self, init: initVar, youtubeVideo: youtubeVideoData, youtubeChannelID: str, response, video_count: int):
+	def get_video_count(self, channel_response):
+		return int(channel_response['items'][0]['statistics']['videoCount'])
+
+	def check_none_new_video(self):
+		return self.youtubeData.loc[self.youtubeChannelID, "video_count_check"] > 3
+	
+	def check_new_video(self, video_count):
+		return self.youtubeData.loc[self.youtubeChannelID, "videoCount"] < video_count
+	
+	def check_del_video(self, video_count):
+		return self.youtubeData.loc[self.youtubeChannelID, "videoCount"] > video_count
+
+	async def filter_video(self, response, video_count: int):
 		try:
-			newVideoNum = video_count - init.youtubeData.loc[youtubeChannelID, "videoCount"]
+			newVideoNum = video_count - self.youtubeData.loc[self.youtubeChannelID, "videoCount"]
 			tasks = [self.getYoutubeVars(response, i) for i in range(3)]
 			videos = await asyncio.gather(*tasks)
 			batch = YouTubeVideoBatch(videos=list(videos))
 			batch.sort_by_publish_time()
 
-			# 새로운 비디오 체크를 위한 두 조건 배열 생성
-			TF1 = [i < newVideoNum for i in range(3)]
-			TF2 = [video.video_link not in init.youtubeData.loc[youtubeChannelID, "oldVideo"].values() 
-				for video in batch.videos[:3]]
-
-			# 새로운 비디오 수 결정
-			if all(TF1) and all(TF2):
-				newVideo = 3
-			elif all(TF1[:2]) and all(TF2[:2]):
-				newVideo = 2
-			elif TF1[0] and TF2[0] and newVideoNum == 1:
-				newVideo = 1
-			else:
-				newVideo = 0
+			# 새로운 비디오 수
+			newVideo = self.get_new_video_num(batch, newVideoNum)
 
 			# 비디오 설명 가져오기
 			for num in range(newVideo):
 				batch.videos[num].description = await self.getDescription(
-					youtubeVideo,
 					str(batch.videos[num].video_link).replace("https://www.youtube.com/watch?v=", "")
-				)
+			)
 				
-			jsonList = [self.getYoutubeJson(init, youtubeChannelID, video) 
-					for video in batch.videos[:3]]
+			self.new_video_json_data_list = [self.getYoutubeJson(video) for video in batch.videos[:newVideo]]
 
 			if newVideo > 0:
-				# 데이터 업데이트
-				init.youtubeData.loc[youtubeChannelID, "videoCount"] += newVideoNum
-				init.youtubeData.loc[youtubeChannelID, "uploadTime"] = batch.videos[0].publish_time
-				
-				# oldVideo 링크 업데이트
-				old_links = [str(init.youtubeData.loc[youtubeChannelID, "oldVideo"][f"link{i}"]) 
-							for i in range(1, 6)]
-				new_links = [video.video_link for video in batch.videos[:newVideo]]
-				
-				updated_links = new_links + old_links[:-newVideo]
-				for i, link in enumerate(updated_links[:5], 1):
-					init.youtubeData.loc[youtubeChannelID, "oldVideo"][f"link{i}"] = link
-
-			return newVideo, jsonList
+				self._update_youtube_data(newVideoNum, batch, newVideo)
 
 		except Exception as e:
-			return 0, []
+			return
+		
+	def _update_youtube_data(self, newVideoNum, batch, newVideo):
+		# 데이터 업데이트
+		self.youtubeData.loc[self.youtubeChannelID, "videoCount"] += newVideoNum
+		self.youtubeData.loc[self.youtubeChannelID, "uploadTime"] = batch.videos[0].publish_time
+		
+		# oldVideo 링크 업데이트
+		old_links = [str(self.youtubeData.loc[self.youtubeChannelID, "oldVideo"][f"link{i}"]) 
+					for i in range(1, 6)]
+		new_links = [video.video_link for video in batch.videos[:newVideo]]
+		
+		updated_links = new_links + old_links[:-newVideo]
+		for i, link in enumerate(updated_links[:5], 1):
+			self.youtubeData.loc[self.youtubeChannelID, "oldVideo"][f"link{i}"] = link
 
-	def makeList_of_urls(self, init: initVar, json, youtubeChannelID: str) -> list:
-		if init.DO_TEST: list_of_urls = [(environ['errorPostBotURL'], json)]
+	def get_new_video_num(self, batch, newVideoNum):
+		# 새로운 비디오 체크를 위한 두 조건 배열 생성
+		TF1 = [i < newVideoNum for i in range(3)]
+		TF2 = [video.video_link not in self.youtubeData.loc[self.youtubeChannelID, "oldVideo"].values() 
+			for video in batch.videos[:3]]
+		if all(TF1) and all(TF2):
+			newVideo = 3
+		elif all(TF1[:2]) and all(TF2[:2]):
+			newVideo = 2
+		elif TF1[0] and TF2[0] and newVideoNum == 1:
+			newVideo = 1
 		else:
-			list_of_urls = [(discordWebhookURL, json) for discordWebhookURL in init.userStateData['discordURL'] if self.ifYoutubeAlarm(init, discordWebhookURL, youtubeChannelID)]
-		return list_of_urls
+			newVideo = 0
+		return newVideo
 
 	async def getYoutubeVars(self, response, num) -> YouTubeVideo:
 		title = subjectReplace(response['items'][num]['snippet']['title'])
@@ -237,6 +274,8 @@ class getYoutubeJsonData:
 						break
 					await asyncio.sleep(0.05)
 		
+		channelName = response['items'][num]['snippet']['channelTitle']
+		# channelCode = response['items'][0]['snippet']['channelId']
 		publish_time = response['items'][num]['snippet']['publishTime']
 		video_id = response['items'][num]['id']['videoId']
 		video_link = f"https://www.youtube.com/watch?v={video_id}"
@@ -248,12 +287,12 @@ class getYoutubeJsonData:
 			video_link=video_link
 		)
 	
-	async def getDescription(self, youtubeVideo: youtubeVideoData, video_id: str) -> str:
+	async def getDescription(self, video_id: str) -> str:
 		try:
 			youtube = build(
 				'youtube', 
 				'v3', 
-				developerKey=youtubeVideo.developerKeyDict[youtubeVideo.TFdeveloperKey], 
+				developerKey=self.developerKey, 
 				cache_discovery=False
 			)
 			
@@ -277,15 +316,15 @@ class getYoutubeJsonData:
 		except Exception as e:
 			asyncio.create_task(DiscordWebhookSender._log_error(f"error youtube getDescription {e}"))
 			return ""
-		
-	def getYoutubeJson(self, init: initVar, youtubeChannelID: str, video) -> dict:
-		channelID = init.youtubeData.loc[youtubeChannelID, "channelID"]
+
+	def get_user_data(self):
+		channelID = self.youtubeData.loc[self.youtubeChannelID, "channelID"]
 		
 		# 플랫폼별 ID 리스트를 딕셔너리로 관리
 		platform_lists = {
-			'chzzk': init.chzzkIDList,
-			'afreeca': init.afreecaIDList,
-			'twitch': init.twitchIDList
+			'chzzk': self.chzzkIDList,
+			'afreeca': self.afreecaIDList,
+			'twitch': self.twitchIDList
 		}
 		
 		# 채널 정보 찾기
@@ -296,14 +335,17 @@ class getYoutubeJsonData:
 				username = platform_list.loc[channelID, 'channelName']
 				avatar_url = platform_list.loc[channelID, 'profile_image']
 				break
-			except KeyError:
+			except Exception as e:
 				continue
 				
 		if username is None or avatar_url is None:
 			asyncio.create_task(DiscordWebhookSender._log_error(f"Channel information not found for channelID: {channelID}"))
-			return
-		
-		youtube_data = init.youtubeData.loc[youtubeChannelID]
+
+		return username, avatar_url
+
+	def getYoutubeJson(self, video) -> dict:
+		username, avatar_url = self.get_user_data()
+		youtube_data = self.youtubeData.loc[self.youtubeChannelID]
 		
 		return {
 			"username": f" [유튜브 알림] {username}",
@@ -312,7 +354,7 @@ class getYoutubeJsonData:
 				"color": 16711680,
 				"author": {
 					"name": youtube_data['channelName'],
-					"url": f"https://www.youtube.com/@{youtubeChannelID}",
+					"url": f"https://www.youtube.com/@{self.youtubeChannelID}",
 					"icon_url": youtube_data['thumbnail_link']
 				},
 				"title": video.video_title,
@@ -326,34 +368,34 @@ class getYoutubeJsonData:
 			}]
 		}
 
-	def saveYoutubeData(self, init: initVar, youtubeVideo: youtubeVideoData, youtubeChannelID: str):
+	def get_index(self, channel_list, target_id):
+			return {id: idx for idx, id in enumerate(channel_list)}[target_id]
+
+	def saveYoutubeData(self):
+		#channelName 바뀔 수 있기 때문에 해당 정보 확인 가능하면 확인후 변경 하도록 하는 기능 추가하기
 		data = {
-			"idx": youtubeVideo.youtubeChannelIdx,
-			"videoCount": int(init.youtubeData.loc[youtubeChannelID, "videoCount"]),
-			"uploadTime": init.youtubeData.loc[youtubeChannelID, "uploadTime"],
-			"oldVideo": init.youtubeData.loc[youtubeChannelID, "oldVideo"],
-			'thumbnail_link': init.youtubeData.loc[youtubeChannelID, 'thumbnail_link']
+			"idx": self.get_index(self.youtubeData["YoutubeChannelID"], self.youtubeChannelID),
+			"videoCount": int(self.youtubeData.loc[self.youtubeChannelID, "videoCount"]),
+			"uploadTime": self.youtubeData.loc[self.youtubeChannelID, "uploadTime"],
+			"oldVideo": self.youtubeData.loc[self.youtubeChannelID, "oldVideo"],
+			'thumbnail_link': self.youtubeData.loc[self.youtubeChannelID, 'thumbnail_link'],
+			'video_count_check': int(self.youtubeData.loc[self.youtubeChannelID, "video_count_check"]),
 		}
 
 		for _ in range(3):
 			try:
 				supabase = create_client(environ['supabase_url'], environ['supabase_key'])
 				supabase.table('youtubeData').upsert(data).execute()
+				break
 			except Exception as e:
 				asyncio.create_task(DiscordWebhookSender._log_error(f"error saving youtube data {e}"))
 		
-	def ifYoutubeAlarm(self, init: initVar, discordWebhookURL, youtubeChannelID: str) -> bool:
-		return (init.userStateData["유튜브 알림"][discordWebhookURL] and 
-		  init.youtubeData.loc[youtubeChannelID, 'channelName'] in init.userStateData["유튜브 알림"][discordWebhookURL])
-	
-	def get_youtube_thumbnail_url(self, init: initVar, youtubeChannelID: str):
-		response = get(f"https://www.youtube.com/@{youtubeChannelID}", 
-                      headers=getChzzkHeaders())
-		
-		text = response.text
-		start_idx = text.find("https://yt3.googleusercontent.com")
+	async def get_youtube_thumbnail_url(self):
+		response = await get_message("youtube", f"https://www.youtube.com/@{self.youtubeChannelID}")
+
+		start_idx = response.find("https://yt3.googleusercontent.com")
 		end_str = "no-rj"
-		end_idx = text[start_idx:].find(end_str)
-		thumbnail_url = text[start_idx:start_idx + end_idx + len(end_str)]
+		end_idx = response[start_idx:].find(end_str)
+		thumbnail_url = response[start_idx:start_idx + end_idx + len(end_str)]
 		if 110 < len(thumbnail_url) < 150:
-			init.youtubeData.loc[youtubeChannelID, 'thumbnail_link'] = thumbnail_url
+			self.youtubeData.loc[self.youtubeChannelID, 'thumbnail_link'] = thumbnail_url
