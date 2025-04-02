@@ -419,14 +419,14 @@ class chzzk_chat_message:
         def format_message(msg_type, nickname, message, time, **kwargs):
             base = f"[{chat_type} - {self.data.channel_name}] {nickname}"
             time = datetime.fromtimestamp(time/1000)
-            if msg_type == 'donation':
+            if msg_type == "후원":
                 return f"{base} ({kwargs.get('amount')}치즈): {message}, {time}"
             return f"{base}: {message}, {time}"
         
         if chat_type == "후원":
             extras = loads(chat_data['extras'])
             if 'payAmount' in extras:
-                message = format_message('donation', self.get_nickname(chat_data), chat_data['msg'], chat_data['msgTime'], amount=extras['payAmount'])
+                message = format_message(chat_type, self.get_nickname(chat_data), chat_data['msg'], chat_data['msgTime'], amount=extras['payAmount'])
             elif 'month' in extras:
                 #구독
                 nickname = extras["nickname"]
