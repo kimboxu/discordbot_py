@@ -15,7 +15,6 @@ class ChzzkChatData:
     sock: websockets.connect = None
     chzzk_chat_msg_List: list = field(default_factory=list)
     last_chat_time: datetime = field(default_factory=datetime.now)
-    chzzk_chat_count: int = 80000
     sid: str = ""
     cid: str = ""
     accessToken: str = ""
@@ -40,7 +39,7 @@ class chzzk_chat_message:
             if self.init.chat_json[self.data.channel_id]: 
                 await change_chat_join_state(self.init.chat_json, self.data.channel_id, False)
             
-            if self.init.chzzk_titleData.loc[self.data.channel_id, 'live_state'] == "CLOSE":
+            if self.check_live_state_close():
                 await asyncio.sleep(5)
                 continue
             
@@ -88,7 +87,7 @@ class chzzk_chat_message:
 
             # 논블로킹 방식으로 메시지 수신 시도
             try:
-                if if_last_chat(self.data.last_chat_time) or self.init.chat_json[self.data.channel_id]:
+                if (self.check_live_state_close() and if_last_chat(self.data.last_chat_time)) or self.init.chat_json[self.data.channel_id]:
                     try: await self.data.sock.close()
                     except: pass
 
@@ -262,7 +261,6 @@ class chzzk_chat_message:
 
     async def connect(self, first_connectTF = 0):
         
-        self.data.chzzk_chat_count = 80000
         self.data.accessToken, self.data.extraToken = chzzk_api.fetch_accessToken(self.data.cid, getChzzkCookie())
         
         await self.data.sock.send(dumps(self._CHZZK_CHAT_DICT("connect")))
@@ -466,9 +464,8 @@ class chzzk_chat_message:
         if self.data.channel_id =="bighead033": byement = "빅바"
         if byement: self._send(byement)
 
-    def chzzk_connect_count(self, num = 1):
-        if self.data.chzzk_chat_count > 0 and self.init.chzzk_titleData.loc[self.data.channel_id,"live_state"] == "OPEN": self.data.chzzk_chat_count -= num
-        if self.data.chzzk_chat_count < 0: self.data.chzzk_chat_count = 0
+    def check_live_state_close(self):
+        return self.init.chzzk_titleData.loc[self.data.channel_id, 'live_state'] == "CLOSE"
 
 
 # async def main():
