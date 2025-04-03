@@ -392,7 +392,8 @@ class getYoutubeJsonData:
 		
 	async def get_youtube_thumbnail_url(self):
 		response = await get_message("youtube", f"https://www.youtube.com/@{self.youtubeChannelID}")
-
+		if not response:
+			return
 		start_idx = response.find("https://yt3.googleusercontent.com")
 		end_str = "no-rj"
 		end_idx = response[start_idx:].find(end_str)
