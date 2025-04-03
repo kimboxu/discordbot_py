@@ -16,13 +16,13 @@ class LiveData:
 	title: str = ""
 	profile_image: str = ""
 	start_at: Dict[str, str] = field(default_factory=lambda: {
-		"openDate": "",
-		"closeDate": ""
+		"openDate": "2025-01-01 00:00:00",
+		"closeDate": "2025-01-01 00:00:00"
 	})
 	state_update_time: Dict[str, str] = field(default_factory=lambda: {
-        "openDate": "2025-01-01 00:00:00",
-        "closeDate": "2025-01-01 00:00:00",
-        "titleChangeDate": "2025-01-01 00:00:00"
+        "openDate": "2025-01-01T00:00:00",
+        "closeDate": "2025-01-01T00:00:00",
+        "titleChangeDate": "2025-01-01T00:00:00"
 })
     
 # 기본 라이브 메시지 클래스 - 공통 기능 포함
@@ -209,13 +209,8 @@ class base_live_message:
     
     def getStarted_at(self, status: str):
         time_str = self.data.start_at[status]
-        if not time_str or time_str == '0000-00-00 00:00:00': 
-            return None
-        try:
-            time = datetime.strptime(time_str, '%Y-%m-%d %H:%M:%S')
-            return time.isoformat()
-        except ValueError:
-            return None
+        time = datetime.strptime(time_str, '%Y-%m-%d %H:%M:%S')
+        return time.isoformat()
     
     def get_channel_url(self):
         raise NotImplementedError

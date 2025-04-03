@@ -463,7 +463,11 @@ class chzzk_chat_message:
         if byement: self._send(byement)
 
     def check_live_state_close(self):
-        return self.init.chzzk_titleData.loc[self.data.channel_id, 'live_state'] == "CLOSE"
+        try:
+            return self.init.chzzk_titleData.loc[self.data.channel_id, 'live_state'] == "CLOSE"
+        except Exception as e:
+            asyncio.create_task(DiscordWebhookSender._log_error(f"Error in check_live_state_close: {e}"))
+            return True
 
 
 # async def main():

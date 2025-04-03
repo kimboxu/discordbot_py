@@ -9,7 +9,7 @@ from requests import post, get
 from requests.exceptions import HTTPError, ReadTimeout, ConnectTimeout, SSLError
 from http.client import RemoteDisconnected
 from timeit import default_timer
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from supabase import create_client
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
@@ -18,7 +18,7 @@ from discord_webhook_sender import DiscordWebhookSender
 
 class initVar:
 	load_dotenv()
-	DO_TEST = False
+	DO_TEST = False	
 	
 	printCount 		= 100	#every 100 count, print count 
 	countTimeList = []
@@ -295,11 +295,6 @@ def printCount(init: initVar):
 	status_prefix = "All offLine, " if all_offline else ""
 	print(f"{status_prefix}{current_time} count {count} TIME {elapsed_time:.1f} SEC")
 
-def changeUTCtime(time_str):
-	time = datetime(int(time_str[:4]),int(time_str[5:7]),int(time_str[8:10]),int(time_str[11:13]),int(time_str[14:16]),int(time_str[17:19]))
-	time -= timedelta(hours=9)
-	return time.isoformat()
-
 def subjectReplace(subject: str) -> str:
 	replacements = {
 		'&lt;': '<',
@@ -353,9 +348,14 @@ def cafe_params(cafeNum, page_num):
 	
 # 	return "CLOSE"
 
-def if_after_time(time_str, sec = 300): # 지금 시간이 이전 시간보다 SEC초 만큼 지났는지 확인
-	time = datetime(int(time_str[:4]),int(time_str[5:7]),int(time_str[8:10]),int(time_str[11:13]),int(time_str[14:16]),int(time_str[17:19])) + timedelta(seconds=sec)
-	return time <= datetime.now()
+def changeUTCtime(time_str):
+    time = datetime.fromisoformat(time_str)
+    time -= timedelta(hours=9)
+    return time.isoformat()
+
+def if_after_time(time_str, sec=300):  # 지금 시간이 이전 시간보다 SEC초 만큼 지났는지 확인
+    time = datetime.fromisoformat(time_str) + timedelta(seconds=sec)
+    return time <= datetime.now()
 
 def if_last_chat(last_chat_time: datetime, sec = 300): #마지막 채팅을 읽어온지 sec초가 지났다면 True
 	return (last_chat_time + timedelta(seconds=sec)) <= datetime.now()
