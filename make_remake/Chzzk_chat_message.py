@@ -7,7 +7,7 @@ from urllib.parse import unquote
 from json import loads, dumps, JSONDecodeError
 from dataclasses import dataclass, field
 from cmd_type import CHZZK_CHAT_CMD
-from base import  getChzzkCookie, if_after_time, if_last_chat, initVar, get_message, change_chat_join_state, save_airing_data
+from base import  getChzzkCookie, if_last_chat, initVar, get_message, change_chat_join_state, save_airing_data
 from discord_webhook_sender import DiscordWebhookSender, get_list_of_urls, get_json_data
 
 @dataclass
@@ -121,9 +121,8 @@ class chzzk_chat_message:
                 raw_message = await message_queue.get()
                 
                 try:
-                    chat_cmd = raw_message['cmd']
-
                     # 채팅 타입 결정
+                    chat_cmd = raw_message['cmd']
                     chat_type = self.get_chat_type(chat_cmd)
 
                     if not await self.check_chat_message(raw_message, chat_type):
@@ -259,7 +258,7 @@ class chzzk_chat_message:
         
         print(f"{self.data.channel_id} chat pong 종료")
 
-    async def connect(self, first_connectTF = 0):
+    async def connect(self):
         
         self.data.accessToken, self.data.extraToken = chzzk_api.fetch_accessToken(self.data.cid, getChzzkCookie())
         
@@ -343,8 +342,6 @@ class chzzk_chat_message:
         def chzzk_getLink(uid):
             return f'https://api.chzzk.naver.com/service/v1/channels/{uid}'
         
-        profile_image = None
-
         data = await get_message("chzzk", chzzk_getLink(uid))
         profile_image = data["content"]["channelImageUrl"]
 
