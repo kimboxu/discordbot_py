@@ -57,7 +57,7 @@ class getYoutubeJsonData:
 	
 		except Exception as e:
 			if "RetryError" not in str(e):
-				asyncio.create_task(DiscordWebhookSender._log_error(f"fYoutube {self.youtubeChannelID}: {str(e)}"))
+				asyncio.create_task(DiscordWebhookSender._log_error(f"error Youtube {self.youtubeChannelID}: {str(e)}"))
 			
 	async def check_youtube(self):
 		youtube_build = self.get_youtube_build()
@@ -393,6 +393,7 @@ class getYoutubeJsonData:
 	async def get_youtube_thumbnail_url(self):
 		response = await get_message("youtube", f"https://www.youtube.com/@{self.youtubeChannelID}")
 		if not response:
+			asyncio.create_task(DiscordWebhookSender._log_error(f"error Youtube get_youtube_thumbnail_url.{self.youtubeChannelID}:"))
 			return
 		start_idx = response.find("https://yt3.googleusercontent.com")
 		end_str = "no-rj"
