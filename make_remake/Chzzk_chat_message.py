@@ -416,6 +416,8 @@ class chzzk_chat_message:
             time = datetime.fromtimestamp(time/1000)
             if msg_type == "후원":
                 return f"{base} ({kwargs.get('amount')}치즈): {message}, {time}"
+            elif msg_type == "구독":
+                return f"{base} ({kwargs.get('month')}개월 동안 구독): {message}, {time}"
             return f"{base}: {message}, {time}"
         
         if chat_type == "후원":
@@ -424,13 +426,12 @@ class chzzk_chat_message:
                 message = format_message(chat_type, self.get_nickname(chat_data), chat_data['msg'], chat_data['msgTime'], amount=extras['payAmount'])
             elif 'month' in extras:
                 #구독
-                nickname = extras["nickname"]
-                chat = chat_data['msg']
-                msgTime = chat_data['msgTime']
-                month = extras["month"]
+                chat_type == "구독"
                 tierName = extras["tierName"] #구독 티어 이름
                 tierNo = extras["tierNo"]   #구독 티어 
-                return  "print_msg 구독 메시지(추후 추가 예정)" # 도네이션 금액이 없는 경우 처리하지 않음
+
+                message = format_message(chat_type, self.get_nickname(chat_data), chat_data['msg'], chat_data['msgTime'], month=extras["month"])
+                # return  "print_msg 구독 메시지(추후 추가 예정)"
             else:
                 # 구독권 선물 이팩트
                 return f"print_msg 어떤 메시지인지 현재는 확인X.{self.data.channel_name}.{self.get_nickname(chat_data)}.{extras}"
