@@ -435,6 +435,7 @@ class chzzk_chat_message:
                 tierNo = extras["tierNo"]   #구독 티어 
                 return  "print_msg 구독 메시지(추후 추가 예정)" # 도네이션 금액이 없는 경우 처리하지 않음
             else:
+                # 구독권 선물 이팩트
                 return f"print_msg 어떤 메시지인지 현재는 확인X.{self.data.channel_name}.{self.get_nickname(chat_data)}.{extras}"
 
         else:
