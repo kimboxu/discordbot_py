@@ -209,12 +209,8 @@ class chzzk_chat_message:
                 if nickname is None:
                     continue
 
-                profile_data = self.get_profile_data(chat_data)
                 userRoleCode = self.get_userRoleCode(chat_data)
-                if userRoleCode and userRoleCode not in ["common_user", "streaming_chat_manager"]:
-                    asyncio.create_task(DiscordWebhookSender._log_error(f"test userRoleCode.{self.data.channel_name}.{profile_data['nickname']}.{userRoleCode}"))
-
-                if not self.init.DO_TEST and (chat_type == "후원" or userRoleCode == "streaming_chat_manager"):
+                if not self.init.DO_TEST and (chat_type == "후원" or userRoleCode in ["streamer", "streaming_chat_manager"]):
                     asyncio.create_task(DiscordWebhookSender._log_error(self.print_msg(chat_data, chat_type), webhook_url=environ['donation_post_url']))
 
                 else:
@@ -429,6 +425,7 @@ class chzzk_chat_message:
         return profile_data
 
     def get_userRoleCode(self, chat_data):
+        #streamer, streaming_chat_manager, common_user
         profile_data = self.get_profile_data(chat_data)
         return profile_data.get('userRoleCode', None)
 
@@ -496,9 +493,14 @@ class chzzk_chat_message:
                     chat_type == "후원미션"
                     # 미션에 추가 
                     if 'PARTICIPATION' != extras['missionDonationType']:
-                        asyncio.create_task(DiscordWebhookSender._log_error(f"test msgTypeCode 후원미션{extras['missionDonationType']}"))
+                        asyncio.create_task(DiscordWebhookSender._log_error(f"test msgTypeCode 후원미션extras['missionDonationType']{extras['missionDonationType']}"))
+                        print(f"test msgTypeCode 후원미션chat_data{chat_data}")
                     message = format_message(chat_type, self.get_nickname(chat_data), chat_data['msg'], chat_data['msgTime'], amount=extras['payAmount'], missionText=extras['missionText'])
+                elif 'payAmount' in extras:
+                    print(f"test msgTypeCode payAmount1.donationType.{chat_data}")
+                    message = format_message(chat_type, self.get_nickname(chat_data), chat_data['msg'], chat_data['msgTime'], amount=extras['payAmount'])
                 else:
+                    print(f"test msgTypeCode payAmount2.donationType.{chat_data}")
                     message = format_message(chat_type, self.get_nickname(chat_data), chat_data['msg'], chat_data['msgTime'], amount=extras['payAmount'])
 
             elif msgTypeCode == "구독":
