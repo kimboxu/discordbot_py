@@ -419,7 +419,10 @@ class chzzk_chat_message:
 
     def get_profile_data(self, chat_data):
         profile_data = chat_data.get('profile', {})
-        if isinstance(profile_data, str):
+        if profile_data is None:
+            profile_data = {}
+
+        elif isinstance(profile_data, str):
             profile_data = unquote(profile_data)
             profile_data = loads(profile_data)
         if not profile_data: print(f"test get_profile_data.{self.data.channel_name}.{chat_data}")
