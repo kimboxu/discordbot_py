@@ -7,7 +7,7 @@ from urllib.parse import unquote
 from json import loads, dumps, JSONDecodeError
 from dataclasses import dataclass, field
 from cmd_type import CHZZK_CHAT_CMD
-from base import  getChzzkCookie, if_last_chat, initVar, get_message, change_chat_join_state, save_airing_data
+from base import  getChzzkCookie, if_last_chat, initVar, get_message, change_chat_join_state, save_airing_data, if_after_time
 from discord_webhook_sender import DiscordWebhookSender, get_list_of_urls, get_json_data
 
 @dataclass
@@ -253,19 +253,18 @@ class chzzk_chat_message:
             asyncio.create_task(DiscordWebhookSender._log_error(f"Webhook task error: {str(e)}"))
 
     async def _get_profile_image_cached(self, uid):
-        current_time = datetime.now()
         
         # 프로필 url profile_cache_ttl 시간 동안 캐시에 재사용 가능 
         if uid in self.profile_image_cache:
             timestamp, image_url = self.profile_image_cache[uid]
-            if current_time - timestamp < self.profile_cache_ttl:
+            if if_after_time(timestamp, sec = self.profile_cache_ttl):
                 return image_url
         
         # If not cached or expired, fetch a new one
         image_url = await self._get_profile_image(uid)
         
         # Update cache
-        self.profile_image_cache[uid] = (current_time, image_url)
+        self.profile_image_cache[uid] = (datetime.now(), image_url)
         return image_url
 
     async def _ping(self):
