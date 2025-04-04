@@ -473,6 +473,8 @@ class chzzk_chat_message:
             time = datetime.fromtimestamp(time/1000)
             if msg_type == "후원":
                 return f"{base} ({kwargs.get('amount')}치즈): {message}, {time}"
+            elif msg_type == "후원미션":
+                return f"{base} ({kwargs.get('missionText')} 모금함에 미션에 {kwargs.get('amount')}치즈 추가): {message}, {time}"
             elif msg_type == "구독":
                 return f"{base} ({kwargs.get('month')}개월 동안 구독): {message}, {time}"
             elif msg_type == "구독선물":
@@ -485,7 +487,15 @@ class chzzk_chat_message:
 
             # if 'payAmount' in extras:
             if msgTypeCode == "후원":
-                message = format_message(chat_type, self.get_nickname(chat_data), chat_data['msg'], chat_data['msgTime'], amount=extras['payAmount'])
+                #후원미션
+                if extras['donationType'] == 'MISSION_PARTICIPATION':
+                    chat_type == "후원미션"
+                    # 미션에 추가 
+                    if 'PARTICIPATION' != extras['missionDonationType']:
+                        asyncio.create_task(DiscordWebhookSender._log_error(f"test msgTypeCode 후원미션{extras['missionDonationType']}"))
+                    message = format_message(chat_type, self.get_nickname(chat_data), chat_data['msg'], chat_data['msgTime'], amount=extras['payAmount'], missionText=extras['missionText'])
+                else:
+                    message = format_message(chat_type, self.get_nickname(chat_data), chat_data['msg'], chat_data['msgTime'], amount=extras['payAmount'])
 
             elif msgTypeCode == "구독":
                 #구독
