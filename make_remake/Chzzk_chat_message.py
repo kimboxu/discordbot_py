@@ -196,6 +196,11 @@ class chzzk_chat_message:
                 if nickname is None:
                     continue
 
+                profile_data = self.get_profile_data(chat_data)
+                userRoleCode = profile_data['userRoleCode']
+                if 'common_user' != userRoleCode:
+                    asyncio.create_task(DiscordWebhookSender._log_error(f"test userRoleCode.{profile_data['nickname']}.{userRoleCode}"))
+
                 if not self.init.DO_TEST and (chat_type == "후원" or nickname in [*self.init.chzzk_chatFilter["channelName"]]):
                     asyncio.create_task(DiscordWebhookSender._log_error(self.print_msg(chat_data, chat_type), webhook_url=environ['donation_post_url']))
 
@@ -399,9 +404,16 @@ class chzzk_chat_message:
             self.init.chzzk_titleData.loc[self.data.channel_id, 'chatChannelId'] = self.data.cid
             await save_airing_data(self.init.chzzk_titleData, 'chzzk', self.data.channel_id)
 
+    def get_profile_data(self, chat_data):
+        profile_data = chat_data.get('profile', {})
+        if isinstance(profile_data, str):
+            profile_data = unquote(profile_data)
+        return loads(profile_data)
+
     def get_nickname(self, chat_data):
-        if chat_data['extras'] is None or loads(chat_data['extras']).get('styleType', {}) in [1, 2, 3]:
-            return None
+        nick_name = "(알 수 없음)"
+        if not chat_data.get('extras', {}) or loads(chat_data['extras']).get('styleType', {}) in [1, 2, 3]:
+            return nick_name
             
         # Handle anonymous users
         user_id = chat_data.get('uid', chat_data.get('userId'))
@@ -409,15 +421,8 @@ class chzzk_chat_message:
             return '익명의 후원자'
         
         # Parse and validate profile data
-        try:
-            if '%7D' in chat_data['profile']: chat_data['profile'] = unquote(chat_data['profile'])
-            profile_data = loads(chat_data['profile'])
-            if isinstance(profile_data, dict) and 'nickname' in profile_data:
-                return profile_data['nickname']
-        except:
-            pass
-        
-        return '(알 수 없음)'
+        profile_data = self.get_profile_data(chat_data)
+        return profile_data.get('nickname', nick_name)
 
     def get_chat(self, chat_data) -> str:
         if 'msg' in chat_data:
@@ -453,18 +458,20 @@ class chzzk_chat_message:
         if chat_type == "후원":
             extras = loads(chat_data['extras'])
             if 'payAmount' in extras:
+                asyncio.create_task(DiscordWebhookSender._log_error(f"test msgTypeCode 후원{chat_data['msgTypeCode']}"))
                 message = format_message(chat_type, self.get_nickname(chat_data), chat_data['msg'], chat_data['msgTime'], amount=extras['payAmount'])
             elif 'month' in extras:
                 #구독
                 chat_type == "구독"
                 tierName = extras["tierName"] #구독 티어 이름
                 tierNo = extras["tierNo"]   #구독 티어 
-
+                asyncio.create_task(DiscordWebhookSender._log_error(f"test msgTypeCode 구독{chat_data['msgTypeCode']}"))
                 message = format_message(chat_type, self.get_nickname(chat_data), chat_data['msg'], chat_data['msgTime'], month=extras["month"])
                 # return  "print_msg 구독 메시지(추후 추가 예정)"
             else:
                 # 구독권 선물 이팩트
-                return f"print_msg 어떤 메시지인지 현재는 확인X.{self.data.channel_name}.{self.get_nickname(chat_data)}.{extras}"
+                asyncio.create_task(DiscordWebhookSender._log_error(f"test msgTypeCode 그외{chat_data['msgTypeCode']}"))
+                message =  f"print_msg 어떤 메시지인지 현재는 확인X.{self.data.channel_name}.{self.get_nickname(chat_data)}.{extras}"
 
         else:
             msg = chat_data['msg'] if chat_type == "채팅" else chat_data['content']
