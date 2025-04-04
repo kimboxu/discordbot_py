@@ -233,7 +233,7 @@ class chzzk_chat_message:
 
     async def _post_chat(self):
         self.profile_image_cache = {}  # Store as uid -> (timestamp, image_url)
-        self.profile_cache_ttl = 300 
+        self.profile_cache_ttl = 1800
         message_sender = DiscordWebhookSender()
 
         while not self.data.sock.closed:
