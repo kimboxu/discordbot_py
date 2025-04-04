@@ -496,11 +496,10 @@ class chzzk_chat_message:
                         asyncio.create_task(DiscordWebhookSender._log_error(f"test msgTypeCode 후원미션extras['missionDonationType']G{extras['missionDonationType']}"))
                         print(f"test msgTypeCode 후원미션chat_data{chat_data}")
                     message = format_message(chat_type, self.get_nickname(chat_data), chat_data['msg'], chat_data['msgTime'], amount=extras['payAmount'], missionText=extras['missionText'])
-                elif 'payAmount' in extras:
-                    print(f"test msgTypeCode payAmount1.donationType.{chat_data}")
+                elif extras['donationType'] == "CHAT":
                     message = format_message(chat_type, self.get_nickname(chat_data), chat_data['msg'], chat_data['msgTime'], amount=extras['payAmount'])
                 else:
-                    print(f"test msgTypeCode payAmount2.donationType.{chat_data}")
+                    print(f"test msgTypeCode payAmount.donationType.{chat_data}")
                     message = format_message(chat_type, self.get_nickname(chat_data), chat_data['msg'], chat_data['msgTime'], amount=extras['payAmount'])
 
             elif msgTypeCode == "구독":
