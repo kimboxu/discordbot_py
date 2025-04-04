@@ -76,7 +76,6 @@ class chzzk_chat_message:
             if task and not task.done() and not task.cancelled():
                 try:
                     task.cancel()
-                    # Optionally wait for task to actually cancel
                     await asyncio.wait([task], timeout=2)
                 except Exception as cancel_error:
                     error_logger = DiscordWebhookSender()
@@ -215,20 +214,30 @@ class chzzk_chat_message:
             self.data.chat_event.set()
 
     async def _post_chat(self):
+        self.profile_image_cache = {}  # Store as uid -> (timestamp, image_url)
+        self.profile_cache_ttl = 300 
+        message_sender = DiscordWebhookSender()
+
         while not self.data.sock.closed:
             try:
-                if not self.data.chzzk_chat_msg_List: await self.data.chat_event.wait()
+                if not self.data.chzzk_chat_msg_List: 
+                    await self.data.chat_event.wait()
+
                 chat_data, chat_type = self.data.chzzk_chat_msg_List.pop(0)
 
                 nickname = self.get_nickname(chat_data)
                 chat = self.get_chat(chat_data)
                 uid = self.get_uid(chat_data)
 
-                profile_image = await self._get_profile_image(uid)
-                json_data = get_json_data(nickname, chat, self.data.channel_name, profile_image)
-                
+                profile_image_task = self._get_profile_image_cached(uid)
+                profile_image = await profile_image_task
+                # profile_image = await self._get_profile_image(uid)
+
+                json_data = get_json_data(nickname, chat, self.data.channel_name, profile_image)   
                 list_of_urls = get_list_of_urls(self.init.DO_TEST, self.init.userStateData, nickname, self.data.channel_id, json_data, "chat_user_json")
-                asyncio.create_task(DiscordWebhookSender().send_messages(list_of_urls))
+
+                webhook_task = asyncio.create_task(message_sender.send_messages(list_of_urls))
+                webhook_task.add_done_callback(lambda t: self._handle_webhook_result(t))
 
                 print(f"{datetime.now()} post chat {self.print_msg(chat_data, chat_type)}")
                 self.data.chat_event.clear()
@@ -236,6 +245,28 @@ class chzzk_chat_message:
             except Exception as e:
                 asyncio.create_task(DiscordWebhookSender._log_error(f"error postChat: {str(e)}"))
                 self.data.chat_event.clear()
+
+    def _handle_webhook_result(self, task):
+        try:
+            task.result()  # 예외가 있으면 여기서 발생
+        except Exception as e:
+            asyncio.create_task(DiscordWebhookSender._log_error(f"Webhook task error: {str(e)}"))
+
+    async def _get_profile_image_cached(self, uid):
+        current_time = datetime.now()
+        
+        # 프로필 url profile_cache_ttl 시간 동안 캐시에 재사용 가능 
+        if uid in self.profile_image_cache:
+            timestamp, image_url = self.profile_image_cache[uid]
+            if current_time - timestamp < self.profile_cache_ttl:
+                return image_url
+        
+        # If not cached or expired, fetch a new one
+        image_url = await self._get_profile_image(uid)
+        
+        # Update cache
+        self.profile_image_cache[uid] = (current_time, image_url)
+        return image_url
 
     async def _ping(self):
         ping_interval = 10
@@ -337,7 +368,7 @@ class chzzk_chat_message:
                 }
         
         return dict(send_dict, **default_dict)
-    
+
     async def _get_profile_image(self, uid):
         def chzzk_getLink(uid):
             return f'https://api.chzzk.naver.com/service/v1/channels/{uid}'
