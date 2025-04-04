@@ -418,7 +418,7 @@ class chzzk_chat_message:
         if isinstance(profile_data, str):
             profile_data = unquote(profile_data)
             profile_data = loads(profile_data)
-        print(f"test get_profile_data.{self.data.channel_name}.{chat_data}")
+        if not profile_data: print(f"test get_profile_data.{self.data.channel_name}.{chat_data}")
         return profile_data
 
     def get_userRoleCode(self, chat_data):
