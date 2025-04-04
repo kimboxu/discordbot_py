@@ -161,6 +161,7 @@ class chzzk_chat_message:
             CHZZK_DONATION_CMD['chat']: '채팅',
             CHZZK_DONATION_CMD['subscribe']: '구독',
             CHZZK_DONATION_CMD['donation']: '후원',
+            CHZZK_DONATION_CMD['CHAT_RESTRICTION_MSG']: '채팅제한',
             CHZZK_DONATION_CMD['subscription_gift']: '구독선물',
         }.get(chat_data['msgTypeCode'], '모름')
 
@@ -200,6 +201,9 @@ class chzzk_chat_message:
     def filter_message(self, chzzk_chat_list, chat_type):
         for chat_data in chzzk_chat_list:
             try:
+                if self.get_donation_type(chat_data) == "채팅제한":
+                    continue
+
                 nickname = self.get_nickname(chat_data)
 
                 if nickname is None:
@@ -483,8 +487,6 @@ class chzzk_chat_message:
                 chat_type == "구독"
                 tierName = extras["tierName"] #구독 티어 이름
                 tierNo = extras["tierNo"]   #구독 티어 
-                asyncio.create_task(DiscordWebhookSender._log_error(f"test msgTypeCode 구독{chat_data['msgTypeCode']}"))
-                print(f"test msgTypeCode 구독{chat_data}")
                 message = format_message(chat_type, self.get_nickname(chat_data), chat_data['msg'], chat_data['msgTime'], month=extras["month"])
 
             else:
