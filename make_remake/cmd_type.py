@@ -13,6 +13,6 @@ CHZZK_DONATION_CMD = {
     'chat'					: 1,
     'donation'				: 10,
 	'subscribe'				: 11,
+	'subscription_gift'		: 12,
 	'CHAT_RESTRICTION_MSG'	: 30,
-    'subscription_gift'		: 99999,
 }
