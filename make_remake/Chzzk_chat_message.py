@@ -490,10 +490,10 @@ class chzzk_chat_message:
             if msgTypeCode == "후원":
                 #후원미션
                 if extras['donationType'] == 'MISSION_PARTICIPATION':
-                    chat_type == "후원미션"
+                    chat_type = "후원미션"
                     # 미션에 추가 
                     if 'PARTICIPATION' != extras['missionDonationType']:
-                        asyncio.create_task(DiscordWebhookSender._log_error(f"test msgTypeCode 후원미션extras['missionDonationType']{extras['missionDonationType']}"))
+                        asyncio.create_task(DiscordWebhookSender._log_error(f"test msgTypeCode 후원미션extras['missionDonationType']G{extras['missionDonationType']}"))
                         print(f"test msgTypeCode 후원미션chat_data{chat_data}")
                     message = format_message(chat_type, self.get_nickname(chat_data), chat_data['msg'], chat_data['msgTime'], amount=extras['payAmount'], missionText=extras['missionText'])
                 elif 'payAmount' in extras:
@@ -505,14 +505,14 @@ class chzzk_chat_message:
 
             elif msgTypeCode == "구독":
                 #구독
-                chat_type == "구독"
+                chat_type = "구독"
                 tierName = extras["tierName"] #구독 티어 이름
                 tierNo = extras["tierNo"]   #구독 티어 
                 message = format_message(chat_type, self.get_nickname(chat_data), chat_data['msg'], chat_data['msgTime'], month=extras['month'])
 
             elif msgTypeCode == "구독선물":
                 if extras['giftType'] == 'SUBSCRIPTION_GIFT':
-                    chat_type == "구독선물"
+                    chat_type = "구독선물"
                     message = format_message(chat_type, self.get_nickname(chat_data), chat_data['msg'], chat_data['msgTime'], quantity=extras["quantity"])
                 else:
                     print(f"test msgTypeCode 구독선물 그외{chat_data}")
