@@ -477,7 +477,6 @@ class chzzk_chat_message:
             # if 'payAmount' in extras:
             if msgTypeCode == "후원":
                 message = format_message(chat_type, self.get_nickname(chat_data), chat_data['msg'], chat_data['msgTime'], amount=extras['payAmount'])
-                print(f"test msgTypeCode 후원{chat_data}")
 
             elif msgTypeCode == "구독":
                 #구독
