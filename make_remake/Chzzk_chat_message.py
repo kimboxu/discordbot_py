@@ -492,12 +492,12 @@ class chzzk_chat_message:
                 chat_type == "구독"
                 tierName = extras["tierName"] #구독 티어 이름
                 tierNo = extras["tierNo"]   #구독 티어 
-                message = format_message(chat_type, self.get_nickname(chat_data), chat_data['msg'], chat_data['msgTime'], quantity=extras['quantity'])
+                message = format_message(chat_type, self.get_nickname(chat_data), chat_data['msg'], chat_data['msgTime'], month=extras['month'])
 
             elif msgTypeCode == "구독선물":
                 if extras['giftType'] == 'SUBSCRIPTION_GIFT':
                     chat_type == "구독선물"
-                    message = format_message(chat_type, self.get_nickname(chat_data), chat_data['msg'], chat_data['msgTime'], month=extras["month"])
+                    message = format_message(chat_type, self.get_nickname(chat_data), chat_data['msg'], chat_data['msgTime'], quantity=extras["quantity"])
                 else:
                     print(f"test msgTypeCode 구독선물 그외{chat_data}")
                     message =  f"print_msg 어떤 메시지인지 현재는 확인X.{self.data.channel_name}.{self.get_nickname(chat_data)}.{extras}"
