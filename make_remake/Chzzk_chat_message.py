@@ -257,7 +257,7 @@ class chzzk_chat_message:
         # 프로필 url profile_cache_ttl 시간 동안 캐시에 재사용 가능 
         if uid in self.profile_image_cache:
             timestamp, image_url = self.profile_image_cache[uid]
-            if if_after_time(timestamp, sec = self.profile_cache_ttl):
+            if not if_after_time(timestamp, sec = self.profile_cache_ttl):
                 return image_url
         
         # If not cached or expired, fetch a new one
