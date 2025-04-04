@@ -208,7 +208,7 @@ class chzzk_chat_message:
 
                 if nickname is None:
                     continue
-
+                
                 userRoleCode = self.get_userRoleCode(chat_data)
                 if not self.init.DO_TEST and (chat_type == "후원" or userRoleCode in ["streamer", "streaming_chat_manager"]):
                     asyncio.create_task(DiscordWebhookSender._log_error(self.print_msg(chat_data, chat_type), webhook_url=environ['donation_post_url']))
@@ -421,7 +421,7 @@ class chzzk_chat_message:
         elif isinstance(profile_data, str):
             profile_data = unquote(profile_data)
             profile_data = loads(profile_data)
-        if not profile_data: print(f"test get_profile_data.{self.data.channel_name}.{chat_data}")
+        if not profile_data and self.get_nickname(chat_data) != "알 수 없음": print(f"test get_profile_data.{self.data.channel_name}.{chat_data}")
         return profile_data
 
     def get_userRoleCode(self, chat_data):
