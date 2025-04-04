@@ -213,7 +213,7 @@ class chzzk_chat_message:
                 if not self.init.DO_TEST and (chat_type == "후원" or userRoleCode == "streaming_chat_manager"):
                     asyncio.create_task(DiscordWebhookSender._log_error(self.print_msg(chat_data, chat_type), webhook_url=environ['donation_post_url']))
 
-                elif not(nickname in [*self.init.chzzk_chatFilter["channelName"]]):
+                else:
                     print(f"{datetime.now()} {self.print_msg(chat_data, chat_type)}")
 
                 if nickname not in [*self.init.chzzk_chatFilter["channelName"]]: #chzzk_chatFilter에 없는 사람 채팅은 제거
@@ -475,9 +475,8 @@ class chzzk_chat_message:
 
             # if 'payAmount' in extras:
             if msgTypeCode == "후원":
-                asyncio.create_task(DiscordWebhookSender._log_error(f"test msgTypeCode 후원{chat_data['msgTypeCode']}"))
-                print(f"test msgTypeCode {extras}")
                 message = format_message(chat_type, self.get_nickname(chat_data), chat_data['msg'], chat_data['msgTime'], amount=extras['payAmount'])
+                print(f"test msgTypeCode 후원{chat_data}")
 
             elif msgTypeCode == "구독":
                 #구독
@@ -485,13 +484,13 @@ class chzzk_chat_message:
                 tierName = extras["tierName"] #구독 티어 이름
                 tierNo = extras["tierNo"]   #구독 티어 
                 asyncio.create_task(DiscordWebhookSender._log_error(f"test msgTypeCode 구독{chat_data['msgTypeCode']}"))
-                print(f"test msgTypeCode {extras}")
+                print(f"test msgTypeCode 구독{chat_data}")
                 message = format_message(chat_type, self.get_nickname(chat_data), chat_data['msg'], chat_data['msgTime'], month=extras["month"])
-                
+
             else:
                 # 구독권 선물 이팩트
                 asyncio.create_task(DiscordWebhookSender._log_error(f"test msgTypeCode 그외{chat_data['msgTypeCode']}"))
-                print(f"test msgTypeCode {extras}")
+                print(f"test msgTypeCode 그외{chat_data}")
                 message =  f"print_msg 어떤 메시지인지 현재는 확인X.{self.data.channel_name}.{self.get_nickname(chat_data)}.{extras}"
 
         else:
