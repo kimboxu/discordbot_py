@@ -264,7 +264,7 @@ class chzzk_chat_message:
         image_url = await self._get_profile_image(uid)
         
         # Update cache
-        self.profile_image_cache[uid] = (datetime.now(), image_url)
+        self.profile_image_cache[uid] = (datetime.now().isoformat(), image_url)
         return image_url
 
     async def _ping(self):
