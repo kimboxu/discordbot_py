@@ -6,7 +6,7 @@ from datetime import datetime
 from urllib.parse import unquote
 from json import loads, dumps, JSONDecodeError
 from dataclasses import dataclass, field
-from cmd_type import CHZZK_CHAT_CMD
+from cmd_type import CHZZK_CHAT_CMD, CHZZK_DONATION_CMD
 from base import  getChzzkCookie, if_last_chat, initVar, get_message, change_chat_join_state, save_airing_data, if_after_time
 from discord_webhook_sender import DiscordWebhookSender, get_list_of_urls, get_json_data
 
@@ -154,6 +154,15 @@ class chzzk_chat_message:
             CHZZK_CHAT_CMD['donation']: '후원',
             CHZZK_CHAT_CMD['ping']: '핑'
         }.get(chat_cmd, '모름')
+    
+    def get_donation_type(self, chat_data) -> str:
+        # 후원 타입 결정
+        return {
+            CHZZK_DONATION_CMD['chat']: '채팅',
+            CHZZK_DONATION_CMD['subscribe']: '구독',
+            CHZZK_DONATION_CMD['donation']: '후원',
+            CHZZK_DONATION_CMD['subscription_gift']: '구독선물',
+        }.get(chat_data['msgTypeCode'], '모름')
 
     async def check_chat_message(self, raw_message, chat_type):
         if chat_type == "핑": 
@@ -201,7 +210,7 @@ class chzzk_chat_message:
                 if 'common_user' != userRoleCode:
                     asyncio.create_task(DiscordWebhookSender._log_error(f"test userRoleCode.{profile_data['nickname']}.{userRoleCode}"))
 
-                if not self.init.DO_TEST and (chat_type == "후원" or nickname in [*self.init.chzzk_chatFilter["channelName"]]):
+                if not self.init.DO_TEST and (chat_type == "후원"):
                     asyncio.create_task(DiscordWebhookSender._log_error(self.print_msg(chat_data, chat_type), webhook_url=environ['donation_post_url']))
 
                 elif not(nickname in [*self.init.chzzk_chatFilter["channelName"]]):
@@ -459,6 +468,7 @@ class chzzk_chat_message:
             extras = loads(chat_data['extras'])
             if 'payAmount' in extras:
                 asyncio.create_task(DiscordWebhookSender._log_error(f"test msgTypeCode 후원{chat_data['msgTypeCode']}"))
+                asyncio.create_task(DiscordWebhookSender._log_error(f"test msgTypeCode {extras}"))
                 message = format_message(chat_type, self.get_nickname(chat_data), chat_data['msg'], chat_data['msgTime'], amount=extras['payAmount'])
             elif 'month' in extras:
                 #구독

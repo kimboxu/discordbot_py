@@ -8,3 +8,10 @@ CHZZK_CHAT_CMD = {
     'chat'                : 93101,
     'donation'            : 93102,
 }
+
+CHZZK_DONATION_CMD = {
+    'subscribe'				: 11,
+    'chat'					: 1,
+    'donation'				: 1,
+    'subscription_gift'		: 1,
+}
