@@ -208,7 +208,7 @@ class chzzk_chat_message:
                 profile_data = self.get_profile_data(chat_data)
                 userRoleCode = self.get_userRoleCode(chat_data)
                 if userRoleCode not in ["common_user", "streaming_chat_manager"]:
-                    asyncio.create_task(DiscordWebhookSender._log_error(f"test userRoleCode.{profile_data['nickname']}.{userRoleCode}"))
+                    asyncio.create_task(DiscordWebhookSender._log_error(f"test userRoleCode.{self.data.channel_name}.{profile_data['nickname']}.{userRoleCode}"))
 
                 if not self.init.DO_TEST and (chat_type == "후원" or userRoleCode == "streaming_chat_manager"):
                     asyncio.create_task(DiscordWebhookSender._log_error(self.print_msg(chat_data, chat_type), webhook_url=environ['donation_post_url']))
@@ -417,12 +417,13 @@ class chzzk_chat_message:
         profile_data = chat_data.get('profile', {})
         if isinstance(profile_data, str):
             profile_data = unquote(profile_data)
-        return loads(profile_data)
+            profile_data = loads(profile_data)
+        print(f"test get_profile_data.{self.data.channel_name}.{chat_data}")
+        return profile_data
 
     def get_userRoleCode(self, chat_data):
-        # userRoleCode type: common_user, streaming_chat_manager...
         profile_data = self.get_profile_data(chat_data)
-        return profile_data['userRoleCode'] 
+        return profile_data.get('userRoleCode', None)
 
     def get_nickname(self, chat_data):
         nick_name = "(알 수 없음)"
