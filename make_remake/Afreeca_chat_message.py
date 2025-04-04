@@ -183,7 +183,7 @@ class afreeca_chat_message:
 
             user_id = user_id.split("(")[0]
 
-            print(f"{datetime.now()} [{chat_type} - {self.data.channel_name}] {nickname}: {chat}")
+            # print(f"{datetime.now()} [{chat_type} - {self.data.channel_name}] {nickname}: {chat}")
 
             if user_id not in [*self.init.afreeca_chatFilter["channelID"]]: 
                 continue
