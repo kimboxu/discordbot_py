@@ -473,12 +473,16 @@ class chzzk_chat_message:
             time = datetime.fromtimestamp(time/1000)
             if msg_type == "후원":
                 return f"{base} ({kwargs.get('amount')}치즈): {message}, {time}"
+            
             elif msg_type == "후원미션":
                 return f"{base} ({kwargs.get('missionText')} 모금함에 미션에 {kwargs.get('amount')}치즈 추가): {message}, {time}"
+            
             elif msg_type == "구독":
                 return f"{base} ({kwargs.get('month')}개월 동안 구독): {message}, {time}"
+            
             elif msg_type == "구독선물":
                 return f"{base} (구독권{kwargs.get('quantity')}개를 선물): {message}, {time}"
+            
             return f"{base}: {message}, {time}"
         
         if chat_type == "후원":
