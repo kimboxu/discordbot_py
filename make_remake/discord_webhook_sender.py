@@ -147,7 +147,7 @@ def get_list_of_urls(DO_TEST, userStateData, name, channel_id, json_data, db_nam
                     user_data = userStateData.loc[discordWebhookURL, db_name]
                      # 데이터 유형 확인 후 리스트 변환
                     if isinstance(user_data, str):
-                        name_list = [user_data]  # 문자열을 리스트로 변환
+                        name_list = user_data  # 문자열을 리스트로 변환
                     elif isinstance(user_data, dict):
                         name_list = user_data.get(channel_id, [])  # 딕셔너리면 get 사용
                     else:
