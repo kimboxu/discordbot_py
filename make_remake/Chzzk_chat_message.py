@@ -21,17 +21,15 @@ class ChzzkChatData:
     extraToken: str = ""
     channel_id: str = ""
     channel_name: str = ""
-    
-    def __post_init__(self):
-        # 이벤트 객체 초기화
-        self.chat_event = asyncio.Event()
 
 class chzzk_chat_message:
     def __init__(self, init_var: initVar, channel_id):
         self.init = init_var
         channel_name = init_var.chzzkIDList.loc[channel_id, 'channelName']
         self.data = ChzzkChatData(channel_id=channel_id, channel_name = channel_name)
-        self.chat_event = asyncio.Event()
+        self.post_chat_semaphore = asyncio.Semaphore(5)
+        self.profile_image_cache = {}  # Store as uid -> (timestamp, image_url)
+        self.profile_cache_ttl = 1800
         self.tasks = []
 
     async def start(self):
@@ -66,7 +64,7 @@ class chzzk_chat_message:
                 asyncio.create_task(self._ping()),
                 asyncio.create_task(self._message_receiver(message_queue)),
                 asyncio.create_task(self._message_processor(message_queue)),
-                asyncio.create_task(self._post_chat())
+                # asyncio.create_task(self._post_chat()),
             ]
             
             await asyncio.gather(self.tasks[0], self.tasks[1])
@@ -168,6 +166,7 @@ class chzzk_chat_message:
     async def check_chat_message(self, raw_message, chat_type):
         if chat_type == "핑": 
             await self.data.sock.send(dumps(self._CHZZK_CHAT_DICT("pong")))
+            print(f"{datetime.now()} [{chat_type} - ping]")
             return False
         
         # 에러 체크
@@ -219,46 +218,35 @@ class chzzk_chat_message:
                 if nickname not in [*self.init.chzzk_chatFilter["channelName"]]: #chzzk_chatFilter에 없는 사람 채팅은 제거
                     return
 
-                self.data.chzzk_chat_msg_List.append([chat_data, chat_type])
+                # self.data.chzzk_chat_msg_List.append([chat_data, chat_type])
+                asyncio.create_task(self._post_chat(chat_data, chat_type))
 
             except Exception as e:
                 asyncio.create_task(DiscordWebhookSender._log_error(f"error process_message {e}"))
 
-        if self.data.chzzk_chat_msg_List:
-            self.data.chat_event.set()
 
-    async def _post_chat(self):
-        self.profile_image_cache = {}  # Store as uid -> (timestamp, image_url)
-        self.profile_cache_ttl = 1800
-        message_sender = DiscordWebhookSender()
-
-        while not self.data.sock.closed:
-            try:
-                if not self.data.chzzk_chat_msg_List: 
-                    await self.data.chat_event.wait()
-
-                chat_data, chat_type = self.data.chzzk_chat_msg_List.pop(0)
-
+    async def _post_chat(self, chat_data, chat_type):
+        try:
+            async with self.post_chat_semaphore:  # Limit concurrent executions
                 nickname = self.get_nickname(chat_data)
                 chat = self.get_chat(chat_data)
                 uid = self.get_uid(chat_data)
-
-                profile_image_task = self._get_profile_image_cached(uid)
-                profile_image = await profile_image_task
-                # profile_image = await self._get_profile_image(uid)
-
-                json_data = get_json_data(nickname, chat, self.data.channel_name, profile_image)   
-                list_of_urls = get_list_of_urls(self.init.DO_TEST, self.init.userStateData, nickname, self.data.channel_id, json_data, "chat_user_json")
-
+                
+                # profile_image_task = self._get_profile_image_cached(uid)
+                profile_image = await self._get_profile_image_cached(uid)
+                
+                json_data = get_json_data(nickname, chat, self.data.channel_name, profile_image)
+                
+                list_of_urls = get_list_of_urls(self.init.DO_TEST, self.init.userStateData, 
+                                            nickname, self.data.channel_id, json_data, "chat_user_json")
+                
+                message_sender = DiscordWebhookSender()
                 webhook_task = asyncio.create_task(message_sender.send_messages(list_of_urls))
                 webhook_task.add_done_callback(lambda t: self._handle_webhook_result(t))
-
-                print(f"{datetime.now()} post chat {self.print_msg(chat_data, chat_type)}")
-                self.data.chat_event.clear()
                 
-            except Exception as e:
-                asyncio.create_task(DiscordWebhookSender._log_error(f"error postChat: {str(e)}"))
-                self.data.chat_event.clear()
+                print(f"{datetime.now()} post chat {self.print_msg(chat_data, chat_type)}")
+        except Exception as e:
+            asyncio.create_task(DiscordWebhookSender._log_error(f"error postChat: {str(e)}"))
 
     def _handle_webhook_result(self, task):
         try:
