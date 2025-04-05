@@ -421,7 +421,7 @@ class chzzk_chat_message:
         elif isinstance(profile_data, str):
             profile_data = unquote(profile_data)
             profile_data = loads(profile_data)
-        if not profile_data and self.get_nickname(chat_data) != "알 수 없음": print(f"test get_profile_data.{self.data.channel_name}.{chat_data}")
+        if not profile_data and self.get_nickname(chat_data) not in  ["익명의 후원자", "알 수 없음"]: print(f"test get_profile_data.{self.data.channel_name}.{chat_data}")
         return profile_data
 
     def get_userRoleCode(self, chat_data):
