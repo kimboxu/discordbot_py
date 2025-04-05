@@ -191,7 +191,7 @@ templates/
 templates/**
 
 
-flutter_application_1/
+stream_alert/
 
 # GitHub Actions workflow
 .github/workflows/deploy.yml
