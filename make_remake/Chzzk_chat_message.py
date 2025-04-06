@@ -200,12 +200,12 @@ class chzzk_chat_message:
             CHZZK_CHAT_CMD['ping']: '핑'
         }.get(chat_cmd, '모름')
     
-    def get_donation_type(self, chat_data) -> str:
+    def get_msgTypeCode(self, chat_data) -> str:
         # 후원 타입 결정
         return {
             CHZZK_DONATION_CMD['chat']: '채팅',
             CHZZK_DONATION_CMD['subscribe']: '구독',
-            CHZZK_DONATION_CMD['donation']: '후원',
+            CHZZK_DONATION_CMD['donation']: '일반후원',
             CHZZK_DONATION_CMD['CHAT_RESTRICTION_MSG']: '채팅제한',
             CHZZK_DONATION_CMD['subscription_gift']: '구독선물',
         }.get(chat_data['msgTypeCode'], '모름')
@@ -249,7 +249,7 @@ class chzzk_chat_message:
         
         for chat_data in chzzk_chat_list:
             try:
-                if self.get_donation_type(chat_data) == "채팅제한":
+                if self.get_msgTypeCode(chat_data) == "채팅제한":
                     continue
 
                 nickname = self.get_nickname(chat_data)
@@ -510,70 +510,130 @@ class chzzk_chat_message:
 
     def print_msg(self, chat_data, chat_type) -> str:
 
-        def format_message(msg_type, nickname, message, time, **kwargs):
-            base = f"[{chat_type} - {self.data.channel_name}] {nickname}"
-            time = datetime.fromtimestamp(time/1000)
-            if msg_type == "후원":
-                return f"{base} ({kwargs.get('amount')}치즈): {message}, {time}"
-            
-            elif msg_type == "후원미션":
-                return f"{base} ({kwargs.get('missionText')} 모금함에 미션에 {kwargs.get('amount')}치즈 추가): {message}, {time}"
-            
-            elif msg_type == "구독":
-                return f"{base} ({kwargs.get('month')}개월 동안 구독): {message}, {time}"
-            
-            elif msg_type == "구독선물":
-                return f"{base} (구독권{kwargs.get('quantity')}개를 선물): {message}, {time}"
-            
-            return f"{base}: {message}, {time}"
-        
-        if chat_type == "후원":
-            extras = loads(chat_data['extras'])
-            msgTypeCode = self.get_donation_type(chat_data)
-
-            # if 'payAmount' in extras:
-            if msgTypeCode == "후원":
-                #후원미션
-                if extras['donationType'] == 'MISSION_PARTICIPATION':
-                    chat_type = "후원미션"
-                    # 미션에 추가 
-                    if 'PARTICIPATION' != extras['missionDonationType']:
-                        asyncio.create_task(DiscordWebhookSender._log_error(f"test msgTypeCode 후원미션extras['missionDonationType']G{extras['missionDonationType']}"))
-                        print(f"test msgTypeCode 후원미션chat_data{chat_data}")
-                    message = format_message(chat_type, self.get_nickname(chat_data), chat_data['msg'], chat_data['msgTime'], amount=extras['payAmount'], missionText=extras['missionText'])
-                elif extras['donationType'] == "CHAT":
-                    message = format_message(chat_type, self.get_nickname(chat_data), chat_data['msg'], chat_data['msgTime'], amount=extras['payAmount'])
-                else:
-                    asyncio.create_task(DiscordWebhookSender._log_error(f"test msgTypeCode payAmount.donationType"))
-                    print(f"test msgTypeCode payAmount.donationType.{chat_data}")
-                    message = format_message(chat_type, self.get_nickname(chat_data), chat_data['msg'], chat_data['msgTime'], amount=extras['payAmount'])
-
-            elif msgTypeCode == "구독":
-                #구독
-                chat_type = "구독"
-                tierName = extras["tierName"] #구독 티어 이름
-                tierNo = extras["tierNo"]   #구독 티어 
-                message = format_message(chat_type, self.get_nickname(chat_data), chat_data['msg'], chat_data['msgTime'], month=extras['month'])
-
-            elif msgTypeCode == "구독선물":
-                if extras['giftType'] == 'SUBSCRIPTION_GIFT':
-                    chat_type = "구독선물"
-                    message = format_message(chat_type, self.get_nickname(chat_data), chat_data['msg'], chat_data['msgTime'], quantity=extras["quantity"])
-                else:
-                    asyncio.create_task(DiscordWebhookSender._log_error(f"test msgTypeCode 구독선물 그외"))
-                    print(f"test msgTypeCode 구독선물 그외{chat_data}")
-                    message =  f"print_msg 어떤 메시지인지 현재는 확인X.{self.data.channel_name}.{self.get_nickname(chat_data)}.{extras}"
-            else:
-                asyncio.create_task(DiscordWebhookSender._log_error(f"test msgTypeCode 그외{chat_data['msgTypeCode']}"))
-                print(f"test msgTypeCode 그외{chat_data}")
-                message =  f"print_msg 어떤 메시지인지 현재는 확인X.{self.data.channel_name}.{self.get_nickname(chat_data)}.{extras}"
-
-        else:
+        if chat_type == "채팅":
             msg = chat_data['msg'] if chat_type == "채팅" else chat_data['content']
             time = chat_data['msgTime'] if chat_type == "채팅" else chat_data['messageTime']
-            message = format_message('chat', self.get_nickname(chat_data), msg, time)
+            return self.format_message('채팅', chat_type, self.get_nickname(chat_data), msg, time)
+        
+        if chat_type == "후원":
+        
+            extras = loads(chat_data['extras'])
+            msg_type_code = self.get_msgTypeCode(chat_data)
+            
+            handlers = {
+                "일반후원": self._handle_donation,
+                "구독": self._handle_subscription,
+                "구독선물": self._handle_gift_subscription,
+                "채팅": self._handle_unknown_chat
+            }
+            
+            handler = handlers.get(msg_type_code, self._handle_unknown)
+            
+            return handler(chat_data, chat_type, extras)
+        
+        return "print_msg 채팅도 후원도 아닌 무언가 현재는 확인X"
 
-        return message
+    def format_message(self, msg_type, chat_type, nickname, message, time, **kwargs):
+        base = f"[{chat_type} - {self.data.channel_name}] {nickname}"
+        formatted_time  = datetime.fromtimestamp(time/1000)
+
+        message_formats = {
+            "후원채팅": lambda: f"{base} ({kwargs.get('amount')}치즈): {message}, {formatted_time}",
+            
+            "후원미션걸기": lambda: f"{base} ({kwargs.get('missionText')} 모금함 미션 생성{kwargs.get('amount')}치즈 ): {message}, {formatted_time}",
+            
+            "후원미션추가": lambda: f"{base} ({kwargs.get('missionText')} 모금함에 미션에 {kwargs.get('amount')}치즈 추가): {message}, {formatted_time}",
+            
+            "구독": lambda: f"{base} ({kwargs.get('month')}개월 동안 구독): {message}, {formatted_time}",
+            
+            "구독선물": lambda: f"{base} (구독권{kwargs.get('quantity')}개를 선물): {message}, {formatted_time}",
+
+            "default": f"{base}: {message}, {formatted_time}"
+            }
+
+        return message_formats.get(msg_type, message_formats["default"])
+    
+    def _handle_donation(self, chat_data, chat_type, extras):
+        donation_type = extras.get('donationType')
+        
+        donation_handlers = {
+            "CHAT": lambda: self.self.format_message(
+                "후원채팅", 
+                chat_type,
+                self.get_nickname(chat_data),
+                chat_data['msg'],
+                chat_data['msgTime'],
+                amount=extras['payAmount']
+            ),
+            "MISSION": lambda: self.format_message(
+                "후원미션걸기",
+                chat_type,
+                self.get_nickname(chat_data),
+                chat_data['msg'],
+                chat_data['msgTime'],
+                amount=extras['payAmount'],
+                missionText=extras['missionText']
+            ),
+            "MISSION_PARTICIPATION": lambda: self.format_message(
+                "후원미션추가",
+                chat_type,
+                self.get_nickname(chat_data),
+                chat_data['msg'],
+                chat_data['msgTime'],
+                amount=extras['payAmount'],
+                missionText=extras['missionText']
+            )
+        }
+        
+        handler = donation_handlers.get(donation_type)
+        if handler:
+            return handler()
+        
+        # Log unknown donation type
+        asyncio.create_task(DiscordWebhookSender._log_error(f"Unknown donation type: {donation_type}"))
+        return self.format_message(
+            "후원채팅",
+            chat_type,
+            self.get_nickname(chat_data),
+            chat_data['msg'],
+            chat_data['msgTime'],
+            amount=extras['payAmount']
+        )
+
+    def _handle_subscription(self, chat_data, chat_type, extras):
+        tierName = extras["tierName"] #구독 티어 이름
+        tierNo = extras["tierNo"]   #구독 티어 
+        return self.format_message(
+            "구독",
+            chat_type,
+            self.get_nickname(chat_data),
+            chat_data['msg'],
+            chat_data['msgTime'],
+            month=extras['month']
+        )
+
+    def _handle_gift_subscription(self, chat_data, chat_type, extras):
+        if extras.get('giftType') == 'SUBSCRIPTION_GIFT':
+            return self.format_message(
+                "구독선물",
+                chat_type,
+                self.get_nickname(chat_data),
+                chat_data['msg'],
+                chat_data['msgTime'],
+                quantity=extras["quantity"]
+            )
+        
+        asyncio.create_task(DiscordWebhookSender._log_error(f"Unknown gift subscription type: {chat_data}"))
+        return f"print_msg 어떤 메시지인지 현재는 확인X.{self.data.channel_name}.{self.get_nickname(chat_data)}.{extras}"
+
+    def _handle_unknown_chat(self, chat_data, extras):
+        asyncio.create_task(DiscordWebhookSender._log_error(f"Unknown _handle_unknown_chat: {chat_data}"))
+        return f"print_msg 어떤 메시지인지 현재는 확인X.{self.data.channel_name}.{self.get_nickname(chat_data)}.{extras}"
+
+    def _handle_unknown(self, chat_data, extras):
+        asyncio.create_task(DiscordWebhookSender._log_error(f"Unknown _handle_unknowne: {self.get_msgTypeCode(chat_data)}"))
+        asyncio.create_task(DiscordWebhookSender._log_error(f"Unknown _handle_unknowne: {chat_data}"))
+        return f"print_msg 어떤 메시지인지 현재는 확인X.{self.data.channel_name}.{self.get_nickname(chat_data)}.{extras}"
 
     async def sendHi(self, himent):
         if await self.get_check_channel_id():
