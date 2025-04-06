@@ -120,7 +120,7 @@ class chzzk_chat_message:
                     for msg in message_buffer:
                         await message_queue.put(msg)
                     message_buffer.clear()
-                    last_buffer_flush = datetime.now()
+                    last_buffer_flush = self.data.last_chat_time
                 continue
                 
             except (JSONDecodeError, ConnectionError, RuntimeError, websockets.exceptions.ConnectionClosed) as e:
