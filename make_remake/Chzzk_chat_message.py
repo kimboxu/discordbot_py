@@ -557,7 +557,7 @@ class chzzk_chat_message:
         donation_type = extras.get('donationType')
         
         donation_handlers = {
-            "CHAT": lambda: self.self.format_message(
+            "CHAT": lambda: self.format_message(
                 "후원채팅", 
                 chat_type,
                 self.get_nickname(chat_data),
