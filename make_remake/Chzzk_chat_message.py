@@ -256,7 +256,7 @@ class chzzk_chat_message:
                 if nickname is None:
                     continue
                 
-                userRoleCode = self.get_userRoleCode(chat_data)
+                userRoleCode = self.get_userRoleCode(chat_data, nickname)
                 
                 message = self.print_msg(chat_data, chat_type)
                 if not self.init.DO_TEST and (chat_type == "후원" or userRoleCode in ["streamer", "streaming_chat_manager"]):
@@ -456,7 +456,7 @@ class chzzk_chat_message:
             self.init.chzzk_titleData.loc[self.data.channel_id, 'chatChannelId'] = self.data.cid
             await save_airing_data(self.init.chzzk_titleData, 'chzzk', self.data.channel_id)
 
-    def get_profile_data(self, chat_data):
+    def get_profile_data(self, chat_data, nickname):
         profile_data = chat_data.get('profile', {})
         if profile_data is None:
             profile_data = {}
@@ -464,12 +464,12 @@ class chzzk_chat_message:
         elif isinstance(profile_data, str):
             profile_data = unquote(profile_data)
             profile_data = loads(profile_data)
-        if not profile_data and self.get_nickname(chat_data) not in  ["익명의 후원자", "알 수 없음"]: print(f"test get_profile_data.{self.data.channel_name}.{chat_data}")
+        if not profile_data and nickname not in  ["익명의 후원자", "알 수 없음"]: print(f"test get_profile_data.{self.data.channel_name}.{chat_data}")
         return profile_data
 
-    def get_userRoleCode(self, chat_data):
+    def get_userRoleCode(self, chat_data, nickname):
         #streamer, streaming_chat_manager, common_user
-        profile_data = self.get_profile_data(chat_data)
+        profile_data = self.get_profile_data(chat_data, nickname)
         return profile_data.get('userRoleCode', None)
 
     def get_nickname(self, chat_data):
@@ -483,7 +483,7 @@ class chzzk_chat_message:
             return '익명의 후원자'
         
         # Parse and validate profile data
-        profile_data = self.get_profile_data(chat_data)
+        profile_data = self.get_profile_data(chat_data, nick_name)
         return profile_data.get('nickname', nick_name)
 
     def get_chat(self, chat_data) -> str:
