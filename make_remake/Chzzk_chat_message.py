@@ -548,7 +548,7 @@ class chzzk_chat_message:
             
             "구독선물": lambda: f"{base} (구독권{kwargs.get('quantity')}개를 선물): {message}, {formatted_time}",
 
-            "default": lambda: f"{base}: {message}, {formatted_time}"
+            "default": f"{base}: {message}, {formatted_time}"
             }
 
         return message_formats.get(msg_type, message_formats["default"])
