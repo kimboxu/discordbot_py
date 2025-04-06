@@ -458,7 +458,8 @@ class chzzk_chat_message:
 
     def get_profile_data(self, chat_data, nickname):
         profile_data = chat_data.get('profile', {})
-        if profile_data is None:
+        #AOS환경의 채팅인 경우 profile_data가 str형의 null인 경우가 있음
+        if profile_data is None or profile_data == "null":
             profile_data = {}
 
         elif isinstance(profile_data, str):
