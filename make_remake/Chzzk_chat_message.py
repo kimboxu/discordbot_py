@@ -80,23 +80,47 @@ class chzzk_chat_message:
                     await error_logger._log_error(f"Error cancelling task for {self.data.channel_id}: {cancel_error}")
 
     async def _message_receiver(self, message_queue: asyncio.Queue):
+        async def should_close_connection():
+            return ((self.check_live_state_close() and if_last_chat(self.data.last_chat_time)) 
+                    or self.init.chat_json[self.data.channel_id])
+        json_loads = loads
+        message_buffer = []
+        buffer_size = 5 
+        buffer_timeout = 0.05
+        last_buffer_flush = datetime.now()
+
         while True:
 
             # 논블로킹 방식으로 메시지 수신 시도
             try:
-                if (self.check_live_state_close() and if_last_chat(self.data.last_chat_time)) or self.init.chat_json[self.data.channel_id]:
+                if await should_close_connection():
                     try: await self.data.sock.close()
-                    except: pass
+                    except Exception: pass
 
                 if self.data.sock.closed:
                     asyncio.create_task(DiscordWebhookSender._log_error(f"{self.data.channel_id} 연결 종료 {self.data.cid}", webhook_url=environ['chat_post_url']))
                     break
 
-                raw_message = await asyncio.wait_for(self.data.sock.recv(), timeout=1)
+                raw_message = await asyncio.wait_for(self.data.sock.recv(), timeout=0.5)
+                
                 self.data.last_chat_time = datetime.now()
-                await message_queue.put(loads(raw_message))
+                parsed_message = json_loads(raw_message)
+                # await message_queue.put(parsed_message)
+
+                message_buffer.append(parsed_message)
+                
+                if len(message_buffer) >= buffer_size or if_last_chat(last_buffer_flush, sec=buffer_timeout):
+                    for msg in message_buffer:
+                        await message_queue.put(msg)
+                    message_buffer.clear()
+                    last_buffer_flush = self.data.last_chat_time
                 
             except asyncio.TimeoutError:
+                if message_buffer:
+                    for msg in message_buffer:
+                        await message_queue.put(msg)
+                    message_buffer.clear()
+                    last_buffer_flush = datetime.now()
                 continue
                 
             except (JSONDecodeError, ConnectionError, RuntimeError, websockets.exceptions.ConnectionClosed) as e:
@@ -111,38 +135,61 @@ class chzzk_chat_message:
                 print(f"{datetime.now()} Error details: {type(e)}, {e}")
                 asyncio.create_task(DiscordWebhookSender._log_error(f"Detailed error in message_receiver: {type(e)}, {e}"))
 
-    async def _message_processor(self, message_queue: asyncio.Queue):            
+
+    async def _message_processor(self, message_queue: asyncio.Queue):
+        processing_pool = []
+        max_concurrent_processing = 10
+        
         while True:
             try:
                 # 큐에서 메시지 가져오기
                 raw_message = await message_queue.get()
                 
                 try:
-                    # 채팅 타입 결정
-                    chat_cmd = raw_message['cmd']
-                    chat_type = self.get_chat_type(chat_cmd)
-
-                    if not await self.check_chat_message(raw_message, chat_type):
-                        continue
+                    task = asyncio.create_task(self._process_single_message(raw_message))
+                    processing_pool.append(task)
                     
-                    if  not (bdy := await self.check_TEMPORARY_RESTRICT(raw_message)):
-                        continue
+                    processing_pool = [t for t in processing_pool if not t.done()]
                     
-                    chzzk_chat_list = self.get_chzzk_chat_list(bdy)
-
-                    if chzzk_chat_list: 
-                        self.filter_message(chzzk_chat_list, chat_type)
-            
+                    if len(processing_pool) >= max_concurrent_processing:
+                        _, pending = await asyncio.wait(
+                            processing_pool, 
+                            return_when=asyncio.FIRST_COMPLETED
+                        )
+                        processing_pool = list(pending)
+                    
                 except Exception as e:
-                    asyncio.create_task(DiscordWebhookSender._log_error(f"Error processing message: {e}, {str(raw_message)}"))
-                
-                # 큐 작업 완료 신호
-                message_queue.task_done()
-                
+                    asyncio.create_task(DiscordWebhookSender._log_error(
+                        f"Error processing message: {e}, {str(raw_message)}"
+                    ))
+                finally:
+                     # 큐 작업 완료 신호
+                    message_queue.task_done()
+                    
             except Exception as e:
                 print(f"{datetime.now()} Error in message_processor: {e}")
                 asyncio.create_task(DiscordWebhookSender._log_error(f"Error in message_processor: {e}"))
-                await asyncio.sleep(0.5)  # 예외 발생 시 잠시 대기
+                await asyncio.sleep(0.1)    ## 예외 발생 시 잠시 대기
+
+    async def _process_single_message(self, raw_message):
+        try:
+            # 채팅 타입 결정
+            chat_cmd = raw_message['cmd']
+            chat_type = self.get_chat_type(chat_cmd)
+
+            if not await self.check_chat_message(raw_message, chat_type):
+                return
+            
+            if not (bdy := await self.check_TEMPORARY_RESTRICT(raw_message)):
+                return
+            
+            chzzk_chat_list = self.get_chzzk_chat_list(bdy)
+
+            if chzzk_chat_list:
+                await self.process_chat_list(chzzk_chat_list, chat_type)
+        
+        except Exception as e:
+            asyncio.create_task(DiscordWebhookSender._log_error(f"Error in _process_single_message: {e}, {str(raw_message)}"))
 
     def get_chat_type(self, chat_cmd) -> str:
         # 채팅 타입 결정
@@ -197,33 +244,41 @@ class chzzk_chat_message:
             chzzk_chat_list = [msg for msg in chat_data]
         return chzzk_chat_list
 
-    def filter_message(self, chzzk_chat_list, chat_type):
+    async def process_chat_list(self, chzzk_chat_list, chat_type):
+        processing_tasks = []
+        
         for chat_data in chzzk_chat_list:
             try:
                 if self.get_donation_type(chat_data) == "채팅제한":
                     continue
 
                 nickname = self.get_nickname(chat_data)
-
                 if nickname is None:
                     continue
                 
                 userRoleCode = self.get_userRoleCode(chat_data)
+                
+                message = self.print_msg(chat_data, chat_type)
                 if not self.init.DO_TEST and (chat_type == "후원" or userRoleCode in ["streamer", "streaming_chat_manager"]):
-                    asyncio.create_task(DiscordWebhookSender._log_error(self.print_msg(chat_data, chat_type), webhook_url=environ['donation_post_url']))
-
+                    asyncio.create_task(DiscordWebhookSender._log_error(
+                        message, webhook_url=environ['donation_post_url']
+                    ))
                 else:
-                    print(f"{datetime.now()} {self.print_msg(chat_data, chat_type)}")
+                    print(f"{datetime.now()} {message}")
 
-                if nickname not in [*self.init.chzzk_chatFilter["channelName"]]: #chzzk_chatFilter에 없는 사람 채팅은 제거
-                    return
+                #chzzk_chatFilter에 없는 사람 채팅은 제거
+                if nickname not in [*self.init.chzzk_chatFilter["channelName"]]:
+                    continue
 
                 # self.data.chzzk_chat_msg_List.append([chat_data, chat_type])
-                asyncio.create_task(self._post_chat(chat_data, chat_type))
+                task = asyncio.create_task(self._post_chat(chat_data, chat_type))
+                processing_tasks.append(task)
 
             except Exception as e:
                 asyncio.create_task(DiscordWebhookSender._log_error(f"error process_message {e}"))
-
+        
+        if processing_tasks:
+            await asyncio.gather(*processing_tasks, return_exceptions=True)
 
     async def _post_chat(self, chat_data, chat_type):
         try:
