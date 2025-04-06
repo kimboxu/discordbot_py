@@ -544,6 +544,7 @@ class chzzk_chat_message:
                 elif extras['donationType'] == "CHAT":
                     message = format_message(chat_type, self.get_nickname(chat_data), chat_data['msg'], chat_data['msgTime'], amount=extras['payAmount'])
                 else:
+                    asyncio.create_task(DiscordWebhookSender._log_error(f"test msgTypeCode payAmount.donationType"))
                     print(f"test msgTypeCode payAmount.donationType.{chat_data}")
                     message = format_message(chat_type, self.get_nickname(chat_data), chat_data['msg'], chat_data['msgTime'], amount=extras['payAmount'])
 
@@ -559,6 +560,7 @@ class chzzk_chat_message:
                     chat_type = "구독선물"
                     message = format_message(chat_type, self.get_nickname(chat_data), chat_data['msg'], chat_data['msgTime'], quantity=extras["quantity"])
                 else:
+                    asyncio.create_task(DiscordWebhookSender._log_error(f"test msgTypeCode 구독선물 그외"))
                     print(f"test msgTypeCode 구독선물 그외{chat_data}")
                     message =  f"print_msg 어떤 메시지인지 현재는 확인X.{self.data.channel_name}.{self.get_nickname(chat_data)}.{extras}"
             else:
