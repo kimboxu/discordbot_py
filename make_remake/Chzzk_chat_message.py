@@ -259,7 +259,7 @@ class chzzk_chat_message:
                 userRoleCode = self.get_userRoleCode(chat_data, nickname)
                 
                 message = self.print_msg(chat_data, chat_type)
-                if not self.init.DO_TEST and (chat_type == "후원" or userRoleCode in ["streamer", "streaming_chat_manager"]):
+                if not self.init.DO_TEST and (self.data.channel_name == "빅헤드" and chat_type == "후원" or userRoleCode in ["streamer", "streaming_chat_manager"]):
                     asyncio.create_task(DiscordWebhookSender._log_error(
                         message, webhook_url=environ['donation_post_url']
                     ))
