@@ -258,13 +258,14 @@ class chzzk_chat_message:
                 
                 userRoleCode = self.get_userRoleCode(chat_data, nickname)
                 
-                message = self.print_msg(chat_data, chat_type)
-                if not self.init.DO_TEST and (self.data.channel_name == "빅헤드" and chat_type == "후원" or userRoleCode in ["streamer", "streaming_chat_manager"]):
-                    asyncio.create_task(DiscordWebhookSender._log_error(
-                        message, webhook_url=environ['donation_post_url']
-                    ))
-                else:
-                    print(f"{datetime.now()} {message}")
+                if self.data.channel_name != "양아지":
+                    message = self.print_msg(chat_data, chat_type)
+                    if not self.init.DO_TEST and (chat_type == "후원" or userRoleCode in ["streamer", "streaming_chat_manager"]):
+                        asyncio.create_task(DiscordWebhookSender._log_error(
+                            message, webhook_url=environ['donation_post_url']
+                        ))
+                    else:
+                        print(f"{datetime.now()} {message}")
 
                 #chzzk_chatFilter에 없는 사람 채팅은 제거
                 if nickname not in [*self.init.chzzk_chatFilter["channelName"]]:
