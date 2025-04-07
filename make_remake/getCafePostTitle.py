@@ -1,13 +1,11 @@
 import asyncio
 from os import environ
-from json import loads
 from time import gmtime
 from datetime import datetime
 from urllib.parse import quote
-from supabase import create_client
 from dataclasses import dataclass
 from discord_webhook_sender import DiscordWebhookSender, get_list_of_urls
-from base import subjectReplace, afreeca_getChannelOffStateData, chzzk_getChannelOffStateData, get_message, iconLinkData, initVar, chzzk_getLink, afreeca_getLink
+from base import subjectReplace, afreeca_getChannelOffStateData, chzzk_getChannelOffStateData, get_message, iconLinkData, initVar, chzzk_getLink, afreeca_getLink, saveCafeData
 @dataclass
 class CafePostData:
     cafe_link: str
@@ -126,7 +124,7 @@ class getCafePostTitle:
                 list_of_urls = get_list_of_urls(self.DO_TEST, self.userStateData, post_data.writer_nickname, self.channel_id, json_data, "cafe_user_json")
                 asyncio.create_task(DiscordWebhookSender().send_messages(list_of_urls))
 
-            self.saveCafeData()
+            await saveCafeData(self.cafeData, self.channel_id)
             
         except Exception as e:
             asyncio.create_task(DiscordWebhookSender._log_error(f"error postCafe {e}"))
@@ -216,29 +214,7 @@ class getCafePostTitle:
             
             # 오류 발생 시 기존 썸네일 반환
             return current_thumbnail if 'current_thumbnail' in locals() else None
-            
-    def saveCafeData(self):
-        try:
-            # 인덱스 생성을 dict comprehension으로 더 간단하게
-            idx = {cafe: i for i, cafe in enumerate(self.cafeData["channelID"])}
-            
-            # 데이터 준비를 별도로 하여 가독성 향상
-            cafe_data = {
-                "idx": idx[self.channel_id],
-                "update_time": int(self.cafeData.loc[self.channel_id, 'update_time']),
-                "cafe_json": self.cafeData.loc[self.channel_id, 'cafe_json'],
-                "cafeNameDict": self.cafeData.loc[self.channel_id, 'cafeNameDict']
-            }
-            
-            # supabase 클라이언트 생성
-            supabase = create_client(environ['supabase_url'], environ['supabase_key'])
-            
-            # 데이터 저장
-            supabase.table('cafeData').upsert(cafe_data).execute()
-            
-        except Exception as e:
-            asyncio.create_task(DiscordWebhookSender._log_error(f"error save cafe time {e}"))
-    
+  
 # 사용 예:
 # async def main():
 #     init = ... # 초기화 객체

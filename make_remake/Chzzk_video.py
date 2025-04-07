@@ -1,13 +1,12 @@
 import asyncio
 from datetime import datetime
 from discord_webhook_sender import DiscordWebhookSender, get_list_of_urls
-from base import changeUTCtime, get_message, iconLinkData, initVar
+from base import changeUTCtime, get_message, iconLinkData, initVar, chzzk_saveVideoData
 
 
 class chzzk_video:
     def __init__(self, init_var: initVar, chzzk_id):
         self.DO_TEST = init_var.DO_TEST
-        self.supabase = init_var.supabase
         self.chzzkIDList = init_var.chzzkIDList
         self.chzzk_video = init_var.chzzk_video
         self.userStateData = init_var.userStateData
@@ -48,7 +47,7 @@ class chzzk_video:
         self.chzzk_video.loc[self.chzzk_id, 'VOD_json']["publishDate"] = publishDate
 
         self.video_alarm_List.append((json_data, videoTitle))
-        await self.chzzk_saveVideoData()
+        await chzzk_saveVideoData(self.chzzk_video, self.chzzk_id)
 
     def check_new_video(self, videoNo, publishDate, thumbnailImageUrl):
         # 이미 처리된 비디오 건너뛰기
@@ -134,21 +133,6 @@ class chzzk_video:
             data["thumbnailImageUrl"],
             data["videoCategoryValue"]
         )
-    
-    async def chzzk_saveVideoData(self): #save profile data
-        idx = {chzzk: i for i, chzzk in enumerate(self.chzzk_video["channelID"])}
-        data = {
-            "idx": idx[self.chzzk_id],
-            'VOD_json': self.chzzk_video.loc[self.chzzk_id, 'VOD_json']
-        }
-        for _ in range(3):
-            try:
-
-                self.supabase.table('chzzk_video').upsert(data).execute()
-                break
-            except Exception as e:
-                asyncio.create_task(DiscordWebhookSender._log_error(f"error saving profile data {e}"))
-                await asyncio.sleep(0.5)
 
     def _update_videoNo_list(self, chzzk_video_json, videoNo):
         if len(chzzk_video_json["videoNo_list"]) >= 10:

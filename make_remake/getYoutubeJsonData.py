@@ -1,12 +1,10 @@
 import asyncio
 import aiohttp
-from os import environ
 from datetime import datetime
-from supabase import create_client
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError, Error
 from discord_webhook_sender import DiscordWebhookSender, get_list_of_urls
-from base import subjectReplace, iconLinkData, initVar, get_message
+from base import subjectReplace, iconLinkData, initVar, get_message, saveYoutubeData
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 from dataclasses import dataclass
@@ -77,7 +75,7 @@ class getYoutubeJsonData:
 			self.youtubeData.loc[self.youtubeChannelID, "videoCount"] += 1
 			self.youtubeData.loc[self.youtubeChannelID, "video_count_check"] = 0
 			#videoCount, video_count_check 만 저장하도록 수정하기
-			self.saveYoutubeData()
+			await saveYoutubeData(self.youtubeData, self.youtubeChannelID)
 			
 		if self.check_new_video(video_count):
 			self.youtubeData.loc[self.youtubeChannelID, "video_count_check"] += 1
@@ -90,7 +88,7 @@ class getYoutubeJsonData:
 			if video_count - self.youtubeData.loc[self.youtubeChannelID, "videoCount"] < 3:
 				self.youtubeData.loc[self.youtubeChannelID, "videoCount"] -= 1
 				#videoCount 만 저장하도록 수정하기
-				self.saveYoutubeData()
+				await saveYoutubeData(self.youtubeData, self.youtubeChannelID)
 
 	async def post_youtube(self):
 		if self.new_video_json_data_list:
@@ -103,7 +101,7 @@ class getYoutubeJsonData:
 					print(f'{datetime.now()} {json_data["username"]}: {json_data["embeds"][0]["title"]}')
 					await asyncio.sleep(0.5)
 			# 다 저장 하도록 수정하기
-			self.saveYoutubeData() #save video count
+			await saveYoutubeData(self.youtubeData, self.youtubeChannelID) #save video count
 			
 	@retry(stop=stop_after_attempt(5), 
 		wait=wait_exponential(multiplier=1, min=2, max=5),
@@ -370,26 +368,7 @@ class getYoutubeJsonData:
 
 	def get_index(self, channel_list, target_id):
 			return {id: idx for idx, id in enumerate(channel_list)}[target_id]
-
-	def saveYoutubeData(self):
-		#channelName 바뀔 수 있기 때문에 해당 정보 확인 가능하면 확인후 변경 하도록 하는 기능 추가하기
-		data = {
-			"idx": self.get_index(self.youtubeData["YoutubeChannelID"], self.youtubeChannelID),
-			"videoCount": int(self.youtubeData.loc[self.youtubeChannelID, "videoCount"]),
-			"uploadTime": self.youtubeData.loc[self.youtubeChannelID, "uploadTime"],
-			"oldVideo": self.youtubeData.loc[self.youtubeChannelID, "oldVideo"],
-			'thumbnail_link': self.youtubeData.loc[self.youtubeChannelID, 'thumbnail_link'],
-			'video_count_check': int(self.youtubeData.loc[self.youtubeChannelID, "video_count_check"]),
-		}
-
-		for _ in range(3):
-			try:
-				supabase = create_client(environ['supabase_url'], environ['supabase_key'])
-				supabase.table('youtubeData').upsert(data).execute()
-				break
-			except Exception as e:
-				asyncio.create_task(DiscordWebhookSender._log_error(f"error saving youtube data {e}"))
-		
+	
 	async def get_youtube_thumbnail_url(self):
 		response = await get_message("youtube", f"https://www.youtube.com/@{self.youtubeChannelID}")
 		if not response:

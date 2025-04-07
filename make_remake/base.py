@@ -18,7 +18,7 @@ from discord_webhook_sender import DiscordWebhookSender
 
 class initVar:
 	load_dotenv()
-	DO_TEST = False	
+	DO_TEST = False
 	
 	printCount 		= 100	#every 100 count, print count 
 	countTimeList = []
@@ -228,7 +228,7 @@ async def discordBotDataVars(init: initVar):
 		except Exception as e:
 			asyncio.create_task(DiscordWebhookSender._log_error((f"Error in discordBotDataVars: {e}")))
 			if init.count != 0: break
-			await asyncio.sleep(0.5)
+			await asyncio.sleep(0.1)
 
 async def fetch_data(supabase, date_name):
 	return supabase.table(date_name).select("*").execute()
@@ -636,7 +636,7 @@ async def save_airing_data(titleData, platform: str, id_):
 			break
 		except Exception as e:
 			asyncio.create_task(DiscordWebhookSender._log_error(f"error saving profile data {e}"))
-			await asyncio.sleep(0.5)
+			await asyncio.sleep(0.1)
 
 async def save_profile_data(IDList, platform: str, id):
 	# Platform specific configurations
@@ -656,7 +656,7 @@ async def save_profile_data(IDList, platform: str, id):
 			break
 		except Exception as e:
 			asyncio.create_task(DiscordWebhookSender._log_error(f"error saving profile data {e}"))
-			await asyncio.sleep(0.5)
+			await asyncio.sleep(0.1)
 
 async def change_chat_join_state(chat_json, channel_id, chat_rejoin = True):
 	chat_json[channel_id] = chat_rejoin
@@ -667,6 +667,60 @@ async def change_chat_join_state(chat_json, channel_id, chat_rejoin = True):
 			break
 		except Exception as e:
 			asyncio.create_task(DiscordWebhookSender._log_error(f"echange_chat_join_state {e}"))
-			await asyncio.sleep(0.5)
+			await asyncio.sleep(0.1)
 	
-	
+async def chzzk_saveVideoData(chzzk_video, _id): #save profile data
+	idx = {chzzk: i for i, chzzk in enumerate(chzzk_video["channelID"])}
+	supabase = create_client(environ['supabase_url'], environ['supabase_key'])
+	data = {
+		"idx": idx[_id],
+		'VOD_json': chzzk_video.loc[_id, 'VOD_json']
+	}
+	for _ in range(3):
+		try:
+			supabase.table('chzzk_video').upsert(data).execute()
+			break
+		except Exception as e:
+			asyncio.create_task(DiscordWebhookSender._log_error(f"error saving profile data {e}"))
+			await asyncio.sleep(0.1)
+
+async def saveCafeData(cafeData, _id):
+	idx = {cafe: i for i, cafe in enumerate(cafeData["channelID"])}
+	supabase = create_client(environ['supabase_url'], environ['supabase_key'])
+
+	cafe_data = {
+		"idx": idx[_id],
+		"update_time": int(cafeData.loc[_id, 'update_time']),
+		"cafe_json": cafeData.loc[_id, 'cafe_json'],
+		"cafeNameDict": cafeData.loc[_id, 'cafeNameDict']
+	}	
+		
+	for _ in range(3):
+		try:
+			supabase.table('cafeData').upsert(cafe_data).execute()
+			break
+		except Exception as e:
+			asyncio.create_task(DiscordWebhookSender._log_error(f"error save cafe time {e}"))
+			await asyncio.sleep(0.1)
+
+async def saveYoutubeData(youtubeData, youtubeChannelID):
+	def get_index(channel_list, target_id):
+		return {id: idx for idx, id in enumerate(channel_list)}[target_id]
+	supabase = create_client(environ['supabase_url'], environ['supabase_key'])
+	data = {
+		"idx": get_index(youtubeData["YoutubeChannelID"], youtubeChannelID),
+		"videoCount": int(youtubeData.loc[youtubeChannelID, "videoCount"]),
+		"uploadTime": youtubeData.loc[youtubeChannelID, "uploadTime"],
+		"oldVideo": youtubeData.loc[youtubeChannelID, "oldVideo"],
+		'thumbnail_link': youtubeData.loc[youtubeChannelID, 'thumbnail_link'],
+		'video_count_check': int(youtubeData.loc[youtubeChannelID, "video_count_check"]),
+	}
+
+	for _ in range(3):
+		try:
+			supabase = create_client(environ['supabase_url'], environ['supabase_key'])
+			supabase.table('youtubeData').upsert(data).execute()
+			break
+		except Exception as e:
+			asyncio.create_task(DiscordWebhookSender._log_error(f"error saving youtube data {e}"))
+			await asyncio.sleep(0.1)
