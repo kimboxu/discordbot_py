@@ -548,7 +548,9 @@ class chzzk_chat_message:
             
             "구독": lambda: f"{base} ({kwargs.get('month')}개월 동안 구독): {message}, {formatted_time}",
             
-            "구독선물": lambda: f"{base} (구독권{kwargs.get('quantity')}개를 선물): {message}, {formatted_time}",
+            "구독선물": lambda: f"{base} ({kwargs.get('giftTierName')}구독권{kwargs.get('quantity')}개를 선물): {message}, {formatted_time}",
+
+            "단일구독선물": lambda: f"{base} ({kwargs.get('receiverNickname')}님에게 {kwargs.get('giftTierName')}구독권선물): {message}, {formatted_time}",
 
             "default": lambda: f"{base}: {message}, {formatted_time}"
 
@@ -626,7 +628,18 @@ class chzzk_chat_message:
                 self.get_nickname(chat_data),
                 chat_data['msg'],
                 chat_data['msgTime'],
-                quantity=extras["quantity"]
+                giftTierName=extras['giftTierName'],
+                quantity=extras["quantity"],
+            )
+        elif extras.get('giftType') == 'SUBSCRIPTION_GIFT_RECEIVER':
+            return self.format_message(
+                "단일구독선물",
+                chat_type,
+                self.get_nickname(chat_data),
+                chat_data['msg'],
+                chat_data['msgTime'],
+                giftTierName=extras['giftTierName'],
+                receiverNickname=extras['receiverNickname'],
             )
         
         asyncio.create_task(DiscordWebhookSender._log_error(f"Unknown gift subscription type: "))
