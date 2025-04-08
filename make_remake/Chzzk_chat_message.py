@@ -124,17 +124,16 @@ class chzzk_chat_message:
                 continue
                 
             except (JSONDecodeError, ConnectionError, RuntimeError, websockets.exceptions.ConnectionClosed) as e:
-                if self.init.chzzk_titleData.loc[self.data.channel_id, 'live_state'] == "OPEN":
+                if not self.check_live_state_close():
                     asyncio.create_task(DiscordWebhookSender._log_error(f"{datetime.now()} last_chat_time{self.data.channel_id} 2.{self.data.last_chat_time}.{e}"))
                     try: await self.data.sock.close()
-                    except: pass
+                    except Exception: pass
                 asyncio.create_task(DiscordWebhookSender._log_error(f"Test2 {self.data.channel_id}.{e}{datetime.now()}"))
                 continue
                     
             except Exception as e:
                 print(f"{datetime.now()} Error details: {type(e)}, {e}")
                 asyncio.create_task(DiscordWebhookSender._log_error(f"Detailed error in message_receiver: {type(e)}, {e}"))
-
 
     async def _message_processor(self, message_queue: asyncio.Queue):
         processing_pool = []
