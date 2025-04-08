@@ -223,6 +223,8 @@ async def discordBotDataVars(init: initVar):
 				data = getattr(init, table_name)
 				data.index = list(data[index_col])
 
+			await update_flag('all_date', False)
+
 			break
 			
 		except Exception as e:
