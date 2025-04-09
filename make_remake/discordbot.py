@@ -72,7 +72,7 @@ async def youtube_task(init):
             await asyncio.sleep(3)
 
 async def generic_chat(init: base.initVar, platform_name: str, message_class):
-    await asyncio.sleep(2)
+    await asyncio.sleep(3)
     
     tasks = {}  # 채널 ID별 실행 중인 task를 관리할 딕셔너리
     
