@@ -598,6 +598,7 @@ class chzzk_chat_message:
         
         # Log unknown donation type
         asyncio.create_task(DiscordWebhookSender._log_error(f"Unknown donation type: {donation_type}"))
+        print(chat_data)
         return self.format_message(
             "후원채팅",
             chat_type,
