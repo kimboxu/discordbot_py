@@ -28,6 +28,9 @@ class chzzk_video:
             if not self._should_process_video(stateData):
                 return
             
+            if not self.check_video_data(stateData):
+                return
+            
             await self._process_video_data(stateData)
 
         except Exception as e:
@@ -35,6 +38,12 @@ class chzzk_video:
 
     def _should_process_video(self, stateData):
         return stateData and stateData["code"] == 200
+    
+    def check_video_data(self, stateData):
+        if not stateData.get("content", {}).get("data", []):
+            return False
+        return True
+
 
     async def _process_video_data(self, stateData):
         videoNo, videoTitle, publishDate, thumbnailImageUrl, _ = self.getChzzkState(stateData)
@@ -117,19 +126,19 @@ class chzzk_video:
         }
     
     def getChzzkState(self, stateData):
-        def get_started_at() -> str | None:
-            if not data["publishDate"]:
+        def get_started_at(date_str) -> str | None:
+            if not date_str:
                 return None
             try:
-                return datetime.fromisoformat(data["publishDate"]).isoformat()
+                return datetime.fromisoformat(date_str).isoformat()
             except ValueError:
                 return None
-            
+
         data = stateData["content"]["data"][0]
         return (
             data["videoNo"],
             data["videoTitle"],
-            get_started_at(),
+            get_started_at(data.get("publishDate")),
             data["thumbnailImageUrl"],
             data["videoCategoryValue"]
         )
