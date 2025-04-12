@@ -528,10 +528,10 @@ class afreeca_live_message(base_live_message):
         return self.data.live == 0 and self.title_data.loc[self.channel_id,'live_state'] == "OPEN"
     
     async def get_live_thumbnail_image(self, state_data, message=None):
-        for count in range(20):
+        for count in range(40):
             thumbnail_image = self.get_thumbnail_image()
             if thumbnail_image is None: 
-                print(f"{datetime.now()} wait make thumbnail 1 .{str(self.getImageURL())}")
+                print(f"{datetime.now()} wait make thumbnail 1 .{count}.{str(self.getImageURL())}")
                 await asyncio.sleep(0.05)
                 continue
             break
