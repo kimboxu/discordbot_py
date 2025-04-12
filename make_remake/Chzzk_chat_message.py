@@ -7,7 +7,7 @@ from urllib.parse import unquote
 from json import loads, dumps, JSONDecodeError
 from dataclasses import dataclass, field
 from cmd_type import CHZZK_CHAT_CMD, CHZZK_DONATION_CMD
-from base import  getChzzkCookie, if_last_chat, initVar, get_message, change_chat_join_state, save_airing_data, if_after_time
+from base import  getChzzkCookie, if_last_chat, initVar, get_message, change_chat_join_state, save_airing_data, if_after_time, discordBotDataVars, userDataVar
 from discord_webhook_sender import DiscordWebhookSender, get_list_of_urls, get_json_data
 
 @dataclass
@@ -26,6 +26,7 @@ class chzzk_chat_message:
     def __init__(self, init_var: initVar, channel_id):
         self.init = init_var
         channel_name = init_var.chzzkIDList.loc[channel_id, 'channelName']
+        self.state_update_time = init_var.chzzk_titleData.loc[channel_id, 'state_update_time']
         self.data = ChzzkChatData(channel_id=channel_id, channel_name = channel_name)
         self.post_chat_semaphore = asyncio.Semaphore(5)
         self.profile_image_cache = {}  # Store as uid -> (timestamp, image_url)
@@ -55,8 +56,13 @@ class chzzk_chat_message:
                                     ping_interval=None) as sock:
             self.data.sock = sock
             self.data.cid = self.init.chzzk_titleData.loc[self.data.channel_id, 'chatChannelId']
-            
+
+
             await self.get_check_channel_id()
+            if not if_after_time(self.state_update_time["openDate"], sec = 60) and not await self.change_chatChannelId():
+                return
+            
+            await self.change_chatChannelId()
             await self.connect()
             message_queue = asyncio.Queue()
 
@@ -443,7 +449,6 @@ class chzzk_chat_message:
         try:
 
             self.data.cid = chzzk_api.fetch_chatChannelId(self.init.chzzkIDList.loc[self.data.channel_id, "channel_code"])
-            await self.change_chatChannelId()
             return True
             
         except Exception as e: 
@@ -455,6 +460,8 @@ class chzzk_chat_message:
             self.init.chzzk_titleData.loc[self.data.channel_id, 'oldChatChannelId'] = self.init.chzzk_titleData.loc[self.data.channel_id, 'chatChannelId']
             self.init.chzzk_titleData.loc[self.data.channel_id, 'chatChannelId'] = self.data.cid
             await save_airing_data(self.init.chzzk_titleData, 'chzzk', self.data.channel_id)
+            return True
+        return False
 
     def get_profile_data(self, chat_data, nickname):
         profile_data = chat_data.get('profile', {})
@@ -659,6 +666,7 @@ class chzzk_chat_message:
 
     async def sendHi(self, himent):
         if await self.get_check_channel_id():
+            await self.change_chatChannelId()
             asyncio.create_task(DiscordWebhookSender._log_error(f"send hi {self.init.chzzkIDList.loc[self.data.channel_id, 'channelName']} {self.data.cid}"))
             self._send(himent)
 
@@ -685,15 +693,41 @@ class chzzk_chat_message:
             return True
 
 
-# async def main():
-#     init = await base2.initVar()
-#     await base2.discordBotDataVars(init)
-#     await base2.userDataVars(init)
-#     await base2.firstMessage(init)
-#     chzzkID = "1f1d41ca22a06ad13fc40efe5d7f8917"
-#     chzzkchat = chzzk_chat_message()
-#     await chzzk_joinchat(init)
-#     await chzzkchat.getChatList(init, chzzkID)
 
-# if __name__ == "__main__":
-#     asyncio.run(main())
+async def generic_chat(init: initVar, platform_name: str, message_class):
+    await asyncio.sleep(3)
+    
+    tasks = {}  # 채널 ID별 실행 중인 task를 관리할 딕셔너리
+    
+    while True:
+        try:
+            # ID 리스트 결정
+            if platform_name == 'chzzk':
+                id_list = init.chzzkIDList
+            elif platform_name == 'afreeca':
+                id_list = init.afreecaIDList
+            
+            # 기존 실행 중인 태스크를 유지하면서, 새로운 채널이 추가되면 실행
+            for channel_id in id_list["channelID"]:
+                if channel_id not in tasks or tasks[channel_id].done():
+                    chat_instance = message_class(init, channel_id)
+                    tasks[channel_id] = asyncio.create_task(chat_instance.start())
+            
+            await asyncio.sleep(1)  # 1초마다 체크 (필요하면 조절 가능)
+        
+        except Exception as e:
+            print(f"{datetime.now()} error {platform_name}_chatf {e}")
+            await asyncio.create_task(DiscordWebhookSender._log_error(f"Error in {platform_name}_chatf: {str(e)}"))
+            await asyncio.sleep(1)
+
+async def main():
+    init = initVar()
+    await discordBotDataVars(init)
+    await userDataVar(init)
+    await asyncio.sleep(1)
+    
+
+    await asyncio.create_task(generic_chat(init, 'chzzk', chzzk_chat_message))
+        
+if __name__ == "__main__":
+    asyncio.run(main())
