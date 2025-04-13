@@ -32,6 +32,7 @@ class base_live_message:
         self.userStateData = init_var.userStateData
         self.platform_name = platform_name
         self.channel_id = channel_id
+        self.channel_name = self.id_list.loc[channel_id, 'channelName']
 
         
         # 플랫폼별 데이터 초기화
@@ -90,15 +91,14 @@ class base_live_message:
             if not self.data.livePostList: 
                 return
             message, json_data = self.data.livePostList.pop(0)
-            channel_name = self._get_channel_name()
 
             db_name = self._get_db_name(message)
-            self._log_message(message, channel_name)
+            self._log_message(message)
 
             list_of_urls = get_list_of_urls(
                 self.DO_TEST, 
                 self.userStateData, 
-                channel_name, 
+                self.channel_name, 
                 self.channel_id, 
                 json_data, 
                 db_name
@@ -120,18 +120,18 @@ class base_live_message:
             return "방종 알림"
         return "알림"
     
-    def _log_message(self, message, channel_name):
+    def _log_message(self, message):
         """메시지 로깅"""
         now = datetime.now()
         if message == "뱅온!":
-            print(f"{now} onLine {channel_name} {message}")
+            print(f"{now} onLine {self.channel_name} {message}")
         elif message == "방제 변경":
             old_title = self._get_old_title()
-            print(f"{now} onLine {channel_name} {message}")
+            print(f"{now} onLine {self.channel_name} {message}")
             print(f"{now} 이전 방제: {old_title}")
             print(f"{now} 현재 방제: {self.data.title}")
         elif message == "뱅종":
-            print(f"{now} offLine {channel_name}")
+            print(f"{now} offLine {self.channel_name}")
     
     def _get_old_title(self):
         return self.title_data.loc[self.channel_id,'title2']
@@ -329,7 +329,7 @@ class chzzk_live_message(base_live_message):
             if state_data['content']['liveImageUrl'] is not None:
                 self.saveImage(state_data)
                 file = {'file': open("explain.png", 'rb')}
-                data = {"username": self._get_channel_name(),
+                data = {"username": self.channel_name,
                         "avatar_url": self.id_list.loc[self.channel_id, 'profile_image']}
                 thumbnail = post(environ['recvThumbnailURL'], files=file, data=data, timeout=3)
                 try: remove('explain.png')
@@ -372,7 +372,7 @@ class chzzk_live_message(base_live_message):
         )
     
     def get_online_state_json(self, message, url, started_at, thumbnail, viewer_count):
-        return {"username": self._get_channel_name(), "avatar_url": self.id_list.loc[self.channel_id, 'profile_image'],
+        return {"username": self.channel_name, "avatar_url": self.id_list.loc[self.channel_id, 'profile_image'],
                 "embeds": [
                     {"color": int(self.id_list.loc[self.channel_id, 'channel_color']),
                     "fields": [
@@ -380,14 +380,14 @@ class chzzk_live_message(base_live_message):
                         # {"name": ':busts_in_silhouette: 시청자수',
                         # "value": viewer_count, "inline": True}
                         ],
-                    "title": f"{self._get_channel_name()} {message}\n",
+                    "title": f"{self.channel_name} {message}\n",
                 "url": url,
                 # "image": {"url": thumbnail},
                 "footer": { "text": f"뱅온 시간", "inline": True, "icon_url": base.iconLinkData().chzzk_icon },
                 "timestamp": base.changeUTCtime(started_at)}]}
 
     def get_online_titleChange_state_json(self, message, url, started_at, thumbnail, viewer_count):
-        return {"username": self._get_channel_name(), "avatar_url": self.id_list.loc[self.channel_id, 'profile_image'],
+        return {"username": self.channel_name, "avatar_url": self.id_list.loc[self.channel_id, 'profile_image'],
                 "embeds": [
                     {"color": int(self.id_list.loc[self.channel_id, 'channel_color']),
                     "fields": [
@@ -395,7 +395,7 @@ class chzzk_live_message(base_live_message):
                         {"name": ':busts_in_silhouette: 시청자수',
                         "value": viewer_count, "inline": True}
                         ],
-                    "title": f"{self._get_channel_name()} {message}\n",
+                    "title": f"{self.channel_name} {message}\n",
                 "url": url,
                 "image": {"url": thumbnail},
                 "footer": { "text": f"뱅온 시간", "inline": True, "icon_url": base.iconLinkData().chzzk_icon },
@@ -416,23 +416,23 @@ class chzzk_live_message(base_live_message):
 		# 		"timestamp": base.changeUTCtime(started_at)}]}
 
     def get_state_data_change_title_json(self, message, url):
-        return {"username": self._get_channel_name(), "avatar_url": self.id_list.loc[self.channel_id, 'profile_image'],
+        return {"username": self.channel_name, "avatar_url": self.id_list.loc[self.channel_id, 'profile_image'],
                 "embeds": [
                     {"color": int(self.id_list.loc[self.channel_id, 'channel_color']),
                     "fields": [
                         {"name": "이전 방제", "value": str(self._get_title()), "inline": True},
                         {"name": "현재 방제", "value": self.data.title, "inline": True}],
-                    "title": f"{self._get_channel_name()} {message}\n",
+                    "title": f"{self.channel_name} {message}\n",
                 "url": url}]}
 
     async def getOffJson(self, state_data, message):
         started_at = self.getStarted_at("closeDate")
         live_thumbnail_image = await self.get_live_thumbnail_image(state_data, message)
         
-        return {"username": self._get_channel_name(), "avatar_url": self.id_list.loc[self.channel_id, 'profile_image'],
+        return {"username": self.channel_name, "avatar_url": self.id_list.loc[self.channel_id, 'profile_image'],
                 "embeds": [
                     {"color": int(self.id_list.loc[self.channel_id, 'channel_color']),
-                    "title": self._get_channel_name() +" 방송 종료\n",
+                    "title": self.channel_name +" 방송 종료\n",
                 "image": {"url": live_thumbnail_image},
                 "footer": { "text": f"방종 시간", "inline": True, "icon_url": base.iconLinkData().chzzk_icon },
                 "timestamp": base.changeUTCtime(started_at)}]}
@@ -543,9 +543,13 @@ class afreeca_live_message(base_live_message):
         try:
             self.saveImage()
             file = {'file': open("explain.png", 'rb')}
-            data = {"username": self._get_channel_name(),
+            data = {"username": self.channel_name,
                     "avatar_url": self.id_list.loc[self.channel_id, 'profile_image']}
-            thumbnail = post(environ['recvThumbnailURL'], files=file, data=data, timeout=3)
+            
+            if self.channel_name in ["김챠멜", "마왕0216", "백곰파", "마뫄", "양아지"]: thumbnailURL = environ['hideThumbnailURL']
+            else: thumbnailURL = environ['recvThumbnailURL']
+
+            thumbnail = post(thumbnailURL, files=file, data=data, timeout=3)
             try: remove('explain.png')
             except: pass
             frontIndex = thumbnail.text.index('"proxy_url"')
@@ -570,37 +574,37 @@ class afreeca_live_message(base_live_message):
         return self.get_online_state_json(message, channel_url, started_at, live_thumbnail_image, viewer_count)
     
     def get_online_state_json(self, message, url, started_at, live_thumbnail_image, viewer_count):
-        return {"username": self._get_channel_name(), "avatar_url": self.id_list.loc[self.channel_id, 'profile_image'],
+        return {"username": self.channel_name, "avatar_url": self.id_list.loc[self.channel_id, 'profile_image'],
                 "embeds": [
                     {"color": int(self.id_list.loc[self.channel_id, 'channel_color']),
                     "fields": [
                         {"name": "방제", "value": self.data.title, "inline": True},
                         {"name": ':busts_in_silhouette: 시청자수',
                         "value": viewer_count, "inline": True}],
-                    "title": f"{self._get_channel_name()} {message}\n",
+                    "title": f"{self.channel_name} {message}\n",
                 "url": url, 
                 "image": {"url": live_thumbnail_image},
                 "footer": { "text": f"뱅온 시간", "inline": True, "icon_url": base.iconLinkData().soop_icon },
                 "timestamp": base.changeUTCtime(started_at)}]}
     
 	# def get_online_titleChange_state_json(self, message, title, url, started_at, thumbnail):
-	# 	return {"username": self._get_channel_name(), "avatar_url": self.afreecaIDList.loc[self.channel_id, 'profile_image'],\
+	# 	return {"username": self.channel_name, "avatar_url": self.afreecaIDList.loc[self.channel_id, 'profile_image'],\
 	# 			"embeds": [
 	# 				{"color": int(self.afreecaIDList.loc[self.channel_id, 'channel_color']),
 	# 				"fields": [
 	# 					{"name": "이전 방제", "value": str(self.titleData.loc[self.channel_id,'title1']), "inline": True},
 	# 					{"name": "현재 방제", "value": title, "inline": True}],
-	# 				"title":  f"{self._get_channel_name()} {message}\n",\
+	# 				"title":  f"{self.channel_name} {message}\n",\
 	# 			"url": url, \
 	# 			"image": {"url": thumbnail},
 	# 			"footer": { "text": f"뱅온 시간", "inline": True, "icon_url": base.iconLinkData().soop_icon },
 	# 			"timestamp": base.changeUTCtime(started_at)}]}
 
     def getOffJson(self): 
-        return {"username": self._get_channel_name(), "avatar_url": self.id_list.loc[self.channel_id, 'profile_image'],
+        return {"username": self.channel_name, "avatar_url": self.id_list.loc[self.channel_id, 'profile_image'],
                 "embeds": [
                     {"color": int(self.id_list.loc[self.channel_id, 'channel_color']),
-                    "title": self._get_channel_name() +" 방송 종료\n",
+                    "title": self.channel_name +" 방송 종료\n",
                 }]}
     
     
