@@ -32,9 +32,7 @@ class base_live_message:
         self.userStateData = init_var.userStateData
         self.platform_name = platform_name
         self.channel_id = channel_id
-        self.channel_name = self.id_list.loc[channel_id, 'channelName']
 
-        
         # 플랫폼별 데이터 초기화
         if platform_name == "chzzk":
             self.id_list = init_var.chzzkIDList
@@ -45,6 +43,7 @@ class base_live_message:
         else:
             raise ValueError(f"Unsupported platform: {platform_name}")
         
+        self.channel_name = self.id_list.loc[channel_id, 'channelName']
         state_update_time = self.title_data.loc[self.channel_id, 'state_update_time']
         self.data = LiveData(state_update_time = state_update_time)
 
