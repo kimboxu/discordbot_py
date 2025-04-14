@@ -234,12 +234,6 @@ async def discordBotDataVars(init: initVar):
 async def fetch_data(supabase, date_name):
 	return supabase.table(date_name).select("*").execute()
 
-def re_idx(data):
-	return (data
-			.astype({'idx': 'int'})
-			.sort_values('idx')
-			.reset_index(drop=True))
-
 def make_list_to_dict(data):
 	if not data:
 		return pd.DataFrame()
@@ -600,8 +594,6 @@ async def save_airing_data(titleData, platform: str, id_):
 
 async def save_profile_data(IDList, platform: str, id):
 	# Platform specific configurations
-	def get_index(channel_list, target_id):
-		return {id: idx for idx, id in enumerate(channel_list)}[target_id]
 
 	supabase = create_client(environ['supabase_url'], environ['supabase_key'])
 	table_name = platform + "IDList"

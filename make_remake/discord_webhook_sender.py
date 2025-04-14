@@ -109,15 +109,10 @@ class DiscordWebhookSender:
         
         try:
             # Fetch and delete user state data
-            userStateData = supabase.table('userStateData').select("*").execute()
-            matching_rows = [row for row in userStateData.data if row.get('discordURL') == url]
+            supabase.table('userStateData').delete().eq('discordURL', url).execute()
             
-            if matching_rows:
-                idx = matching_rows[0].get('idx')
-                supabase.table('userStateData').delete().eq('idx', idx).execute()
-                
-                # Optional: Update flag if needed
-                # await self._update_flag(supabase, 'all_date', True)
+            # Optional: Update flag if needed
+            # await self._update_flag(supabase, 'all_date', True)
         except Exception as e:
             await self._log_error(f"Error deleting user state data: {e}")
 
