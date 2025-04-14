@@ -96,7 +96,7 @@ class base_live_message:
         try:
             if not self.data.livePostList:
                 return
-            message, notification_data = self.data.livePostList.pop(0)
+            message, json_data = self.data.livePostList.pop(0)
 
             db_name = self._get_db_name(message)
             self._log_message(message)
@@ -107,10 +107,18 @@ class base_live_message:
                 self.userStateData,
                 self.channel_name,
                 self.channel_id,
-                notification_data,
+                json_data,
                 db_name
             )
-            
+            list_of_urls = get_list_of_urls(
+                self.DO_TEST, 
+                self.userStateData, 
+                self.channel_name, 
+                self.channel_id, 
+                json_data, 
+                db_name
+            )
+            asyncio.create_task(DiscordWebhookSender().send_messages(list_of_urls))
             # Send notifications
             try:
                 asyncio.create_task(NotificationSender().send_notifications(token_list))
