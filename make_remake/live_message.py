@@ -606,4 +606,35 @@ class afreeca_live_message(base_live_message):
                     "title": self.channel_name +" 방송 종료\n",
                 }]}
     
+async def main_loop(init: base.initVar):
+
+    while True:
+        try:
+            if init.count % 2 == 0: await base.userDataVar(init)
+
+            chzzk_live_tasks = [asyncio.create_task(chzzk_live_message(init, channel_id).start()) for channel_id in init.chzzkIDList["channelID"]]
+            afreeca_live_tasks = [asyncio.create_task(afreeca_live_message(init, channel_id).start()) for channel_id in init.afreecaIDList["channelID"]]
+            
+            tasks = [
+                *chzzk_live_tasks,
+                *afreeca_live_tasks,
+            ]
+
+            await asyncio.gather(*tasks)
+            await base.fSleep(init)
+            base.fCount(init)
+
+        except Exception as e:
+            asyncio.create_task(DiscordWebhookSender._log_error(f"Error in main loop: {str(e)}"))
+            await asyncio.sleep(1)
+
+async def main():
+    init = base.initVar()
+    await base.discordBotDataVars(init)
+    await base.userDataVar(init)
+    await asyncio.sleep(1)
     
+    await asyncio.create_task(main_loop(init))
+        
+if __name__ == "__main__":
+    asyncio.run(main())
