@@ -99,7 +99,6 @@ class AsyncLogger:
 		self._stop_event.set()
 		self.executor.shutdown(wait=True)
 
-
 async def userDataVar(init: initVar):
 	try:
 		
@@ -144,7 +143,7 @@ async def load_user_state_data(init: initVar):
 	userStateData = await asyncio.to_thread(
 		lambda: init.supabase.table('userStateData').select("*").execute()
 	)
-	init.userStateData = re_idx(make_list_to_dict(userStateData.data))
+	init.userStateData = make_list_to_dict(userStateData.data)
 	init.userStateData.index = list(init.userStateData['discordURL'])
 	
 	# 플래그 업데이트
@@ -198,7 +197,7 @@ async def discordBotDataVars(init: initVar):
 			results = await asyncio.gather(*tasks)
 			
 			# 결과를 딕셔너리로 변환
-			data_dict = {name: re_idx(make_list_to_dict(result.data)) 
+			data_dict = {name: make_list_to_dict(result.data)
 						for name, result in zip(table_names, results)}
 			
 			# init 객체에 데이터 할당
@@ -535,45 +534,6 @@ async def get_message(platform, link):
 		error_msg = f"error get_message2: {platform} - {str(e)}"
 		asyncio.create_task(DiscordWebhookSender._log_error(error_msg))
 		return {}
-
-# async def get_message(arr, platform):
-# 	platform_handlers = {
-# 		"afreeca": afreeca_get_url_json,
-# 		"twitch": afreeca_get_url_json,
-# 		"chzzk": chzzk_get_url_json,
-# 		"cafe": cafe_get_url_json
-# 	}
-	
-# 	handler = platform_handlers.get(platform)
-# 	if not handler:
-# 		return []
-
-# 	async with ClientSession() as session:
-# 		tasks = [handler(session, url) for url in arr]
-# 		responses = await asyncio.gather(*tasks)
-# 		return [responses]
-
-# async def chzzk_get_url_json(session, args):
-# 	url, headers, cookies = args[0]
-# 	try:
-# 		async with session.get(url, headers=headers, cookies=cookies, timeout=3) as response:
-# 			return [await response.json(), args[1], True]
-# 	except: return [{}, args[1], False]
-	
-# async def afreeca_get_url_json(session, args):
-# 	url, headers = args[0]
-# 	try:
-# 		async with session.get(url, headers=headers, timeout=3) as response:
-# 			return [await response.json(), args[1], True]
-# 	except: return [{}, args[1], False]
-
-# async def cafe_get_url_json(session, args):
-# 	url, params = args[0], args[1]
-# 	headers = getDefaultHeaders()
-# 	try:
-# 		async with session.get(url, params=params, headers=headers, timeout=3) as response:
-# 			return [await response.json(), True]
-# 	except Exception as e: return [{}, False]
 	
 def twitch_getChannelOffStateData(offStateList, twitchID):
 	try:
@@ -616,13 +576,11 @@ def afreeca_getChannelOffStateData(stateData, afreeca_id, profile_image = ""):
 		asyncio.create_task(DiscordWebhookSender._log_error(f"error getChannelOffStateData afreeca {e}"))
 
 async def save_airing_data(titleData, platform: str, id_):
-	def get_index(channel_list, target_id):
-		return {id: idx for idx, id in enumerate(channel_list)}[target_id]
 	
 	supabase = create_client(environ['supabase_url'], environ['supabase_key'])
 	table_name = platform + "_titleData"
 	data_func = {
-				"idx": get_index(titleData["channelID"], id_),
+				"channelID": id_,
 				"live_state": titleData.loc[id_, "live_state"],
 				"title1": titleData.loc[id_, "title1"],
 				"title2": titleData.loc[id_, "title2"],
@@ -648,7 +606,7 @@ async def save_profile_data(IDList, platform: str, id):
 	supabase = create_client(environ['supabase_url'], environ['supabase_key'])
 	table_name = platform + "IDList"
 	data_func = {
-			"idx": get_index(IDList["channelID"], id),
+			"channelID": id,
 			'profile_image': IDList.loc[id, 'profile_image']
 		}
 
@@ -672,10 +630,9 @@ async def change_chat_join_state(chat_json, channel_id, chat_rejoin = True):
 			await asyncio.sleep(0.1)
 	
 async def chzzk_saveVideoData(chzzk_video, _id): #save profile data
-	idx = {chzzk: i for i, chzzk in enumerate(chzzk_video["channelID"])}
 	supabase = create_client(environ['supabase_url'], environ['supabase_key'])
 	data = {
-		"idx": idx[_id],
+		"channelID": _id,
 		'VOD_json': chzzk_video.loc[_id, 'VOD_json']
 	}
 	for _ in range(3):
@@ -687,11 +644,10 @@ async def chzzk_saveVideoData(chzzk_video, _id): #save profile data
 			await asyncio.sleep(0.1)
 
 async def saveCafeData(cafeData, _id):
-	idx = {cafe: i for i, cafe in enumerate(cafeData["channelID"])}
 	supabase = create_client(environ['supabase_url'], environ['supabase_key'])
 
 	cafe_data = {
-		"idx": idx[_id],
+		"channelID": _id,
 		"update_time": int(cafeData.loc[_id, 'update_time']),
 		"cafe_json": cafeData.loc[_id, 'cafe_json'],
 		"cafeNameDict": cafeData.loc[_id, 'cafeNameDict']
@@ -706,11 +662,9 @@ async def saveCafeData(cafeData, _id):
 			await asyncio.sleep(0.1)
 
 async def saveYoutubeData(youtubeData, youtubeChannelID):
-	def get_index(channel_list, target_id):
-		return {id: idx for idx, id in enumerate(channel_list)}[target_id]
 	supabase = create_client(environ['supabase_url'], environ['supabase_key'])
 	data = {
-		"idx": get_index(youtubeData["YoutubeChannelID"], youtubeChannelID),
+		"YoutubeChannelID": youtubeChannelID,
 		"videoCount": int(youtubeData.loc[youtubeChannelID, "videoCount"]),
 		"uploadTime": youtubeData.loc[youtubeChannelID, "uploadTime"],
 		"oldVideo": youtubeData.loc[youtubeChannelID, "oldVideo"],
