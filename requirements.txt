@@ -39,3 +39,4 @@ pandas
 python-dotenv
 tenacity
 flask
+flask_cors
