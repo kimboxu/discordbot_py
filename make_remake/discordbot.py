@@ -4,6 +4,7 @@ import asyncio
 from time import time
 from datetime import datetime
 from supabase import create_client
+from shared_state import StateManager
 from Twitch_live_message import twitch_live_message
 # from Chzzk_live_message import chzzk_live_message
 # from Afreeca_live_message import afreeca_live_message
@@ -98,11 +99,9 @@ async def generic_chat(init: base.initVar, platform_name: str, message_class):
             await asyncio.sleep(1)
 
 async def main():
-    init = base.initVar()
-    await base.discordBotDataVars(init)
-    await base.userDataVar(init)
-    await asyncio.sleep(1)
-    
+    state = StateManager.get_instance()
+    init = await state.initialize()
+
     test = [
         asyncio.create_task(main_loop(init)),
         asyncio.create_task(generic_chat(init, 'afreeca', afreeca_chat_message)),
