@@ -40,3 +40,4 @@ python-dotenv
 tenacity
 flask
 flask_cors
+firebase_admin
