@@ -1,6 +1,6 @@
 from os import environ
 from flask import Flask, request, jsonify, g
-from base import re_idx, make_list_to_dict
+from base import make_list_to_dict
 from flask_cors import CORS
 import asyncio
 import threading
@@ -15,7 +15,7 @@ def init_background_tasks():
 
     supabase = create_client(environ['supabase_url'], environ['supabase_key'])
     userStateData = supabase.table('userStateData').select("*").execute()
-    userStateData = re_idx(make_list_to_dict(userStateData.data))
+    userStateData = make_list_to_dict(userStateData.data)
     userStateData.index = userStateData["discordURL"]
     loop.close()
     return userStateData
@@ -76,11 +76,12 @@ def register():
     if discordWebhooksURL in app.userStateData.index:
         check_have_id = "have_URL"
 
-    elif discordWebhooksURL.find("https://discord.com/api/webhooks") == -1:
+    elif not discordWebhooksURL.startswith(("https://discord.com/api/webhooks", "https://discordapp.com/api/webhooks/")):
         check_have_id = "not_discord_URL"
 
-    elif discordWebhooksURL.find("https://discord.com/api/webhooks") == 0:
+    elif discordWebhooksURL.startswith(("https://discord.com/api/webhooks/", "https://discordapp.com/api/webhooks/")):
         check_have_id = "OK"
+
     else: 
         check_have_id = "fail"
         
