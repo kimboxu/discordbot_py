@@ -9,17 +9,24 @@ from urllib.request import urlretrieve
 from dataclasses import dataclass, field
 from discord_webhook_sender import DiscordWebhookSender, get_list_of_urls
 
+from supabase import create_client
+from typing import List, Tuple, Dict, Any
+import firebase_admin
+from firebase_admin import credentials, messaging
+
 @dataclass
 class LiveData:
-	livePostList: list = field(default_factory=list)
-	live: str = ""
-	title: str = ""
-	profile_image: str = ""
-	start_at: Dict[str, str] = field(default_factory=lambda: {
-		"openDate": "2025-01-01 00:00:00",
-		"closeDate": "2025-01-01 00:00:00"
-	})
-	state_update_time: Dict[str, str] = field(default_factory=lambda: {
+    livePostList: list = field(default_factory=list)
+    live: str = ""
+    title: str = ""
+    view_count: int = 0
+    thumbnail_url: str = ""
+    profile_image: str = ""
+    start_at: Dict[str, str] = field(default_factory=lambda: {
+        "openDate": "2025-01-01 00:00:00",
+        "closeDate": "2025-01-01 00:00:00"
+    })
+    state_update_time: Dict[str, str] = field(default_factory=lambda: {
         "openDate": "2025-01-01T00:00:00",
         "closeDate": "2025-01-01T00:00:00",
         "titleChangeDate": "2025-01-01T00:00:00"
@@ -49,7 +56,7 @@ class base_live_message:
 
     async def start(self):
         await self.addMSGList()
-        await self.postLive_massge()
+        await self.postLive_message()
 
     async def addMSGList(self):
         try:
@@ -85,28 +92,33 @@ class base_live_message:
     def _get_channel_name(self):
         return self.id_list.loc[self.channel_id, 'channelName']
     
-    async def postLive_massge(self):
+    async def postLive_message(self):
         try:
-            if not self.data.livePostList: 
+            if not self.data.livePostList:
                 return
-            message, json_data = self.data.livePostList.pop(0)
+            message, notification_data = self.data.livePostList.pop(0)
 
             db_name = self._get_db_name(message)
             self._log_message(message)
 
-            list_of_urls = get_list_of_urls(
-                self.DO_TEST, 
-                self.userStateData, 
-                self.channel_name, 
-                self.channel_id, 
-                json_data, 
+            # Get list of device tokens
+            token_list = get_user_device_tokens(
+                self.DO_TEST,
+                self.userStateData,
+                self.channel_name,
+                self.channel_id,
+                notification_data,
                 db_name
             )
-            asyncio.create_task(DiscordWebhookSender().send_messages(list_of_urls))
+            
+            # Send notifications
+            try:
+                asyncio.create_task(NotificationSender().send_notifications(token_list))
+            except: print("Test NotificationSender")
             await base.save_airing_data(self.title_data, self.platform_name, self.channel_id)
 
         except Exception as e:
-            asyncio.create_task(DiscordWebhookSender._log_error(f"postLiveMSG {e}"))
+            print(f"postLiveMSG {e}")
             self.data.livePostList.clear()
     
     def _get_db_name(self, message):
@@ -294,7 +306,7 @@ class chzzk_live_message(base_live_message):
         return f'https://chzzk.naver.com/live/{self.id_list.loc[self.channel_id, "channel_code"]}'
 
     def getViewer_count(self, state_data):
-        return state_data['content']['concurrentUserCount']
+        self.data.view_count = state_data['content']['concurrentUserCount']
 
     def getMessage(self) -> str: 
         return "뱅온!" if (self.checkStateTransition("OPEN")) else "방제 변경"
@@ -349,56 +361,51 @@ class chzzk_live_message(base_live_message):
         link = state_data['content']['liveImageUrl']
         link = link.replace("{type", "")
         link = link.replace("}.jpg", "0.jpg")
+        self.data.thumbnail_url = link
         return link
     
     async def getOnAirJson(self, message, state_data):
-        channel_url = self.get_channel_url()
-        
+
         if self.data.live == "CLOSE":
-            return self.get_state_data_change_title_json(message, channel_url)
+            return self.get_state_data_change_title_json(message)
         
-        started_at = self.getStarted_at("openDate")
-        viewer_count = self.getViewer_count(state_data)
-        live_thumbnail_image = await self.get_live_thumbnail_image(state_data, message)
+        self.getViewer_count(state_data)
+        thumbnail_url = await self.get_live_thumbnail_image(state_data, message)
         
         if message == "뱅온!":
-            return self.get_online_state_json(
-                message, channel_url, started_at, live_thumbnail_image, viewer_count
-            )
+            return self.get_online_state_json(message, thumbnail_url)
         
-        return self.get_online_titleChange_state_json(
-            message, channel_url, started_at, live_thumbnail_image, viewer_count
-        )
+        return self.get_online_titleChange_state_json(message, thumbnail_url)
     
-    def get_online_state_json(self, message, url, started_at, thumbnail, viewer_count):
+    def get_online_state_json(self, message, thumbnail_url):
         return {"username": self.channel_name, "avatar_url": self.id_list.loc[self.channel_id, 'profile_image'],
                 "embeds": [
                     {"color": int(self.id_list.loc[self.channel_id, 'channel_color']),
                     "fields": [
                         {"name": "방제", "value": self.data.title, "inline": True},
                         # {"name": ':busts_in_silhouette: 시청자수',
-                        # "value": viewer_count, "inline": True}
+                        # "value": self.data.view_count, "inline": True}
                         ],
                     "title": f"{self.channel_name} {message}\n",
-                "url": url,
-                # "image": {"url": thumbnail},
+                "url": self.get_channel_url(),
+                # "image": {"url": thumbnail_url},
                 "footer": { "text": f"뱅온 시간", "inline": True, "icon_url": base.iconLinkData().chzzk_icon },
-                "timestamp": base.changeUTCtime(started_at)}]}
+                "timestamp": base.changeUTCtime(self.getStarted_at("openDate"))}]}
 
-    def get_online_titleChange_state_json(self, message, url, started_at, thumbnail, viewer_count):
+    def get_online_titleChange_state_json(self, message, thumbnail_url):
         return {"username": self.channel_name, "avatar_url": self.id_list.loc[self.channel_id, 'profile_image'],
                 "embeds": [
                     {"color": int(self.id_list.loc[self.channel_id, 'channel_color']),
                     "fields": [
                         {"name": "방제", "value": self.data.title, "inline": True},
                         {"name": ':busts_in_silhouette: 시청자수',
-                        "value": viewer_count, "inline": True}
+                        "value": self.data.view_count, "inline": True}
                         ],
                     "title": f"{self.channel_name} {message}\n",
-                "url": url,
-                "image": {"url": thumbnail},
+                "url": self.get_channel_url(),
+                "image": {"url": thumbnail_url},
                 "footer": { "text": f"뱅온 시간", "inline": True, "icon_url": base.iconLinkData().chzzk_icon },
-                "timestamp": base.changeUTCtime(started_at)}]}
+                "timestamp": base.changeUTCtime(self.getStarted_at("openDate"))}]}
 
 		# return {"username": self.chzzkIDList.loc[chzzkID, 'channelName'], "avatar_url": self.chzzkIDList.loc[chzzkID, 'profile_image'],
 		# 		"embeds": [
@@ -414,7 +421,7 @@ class chzzk_live_message(base_live_message):
 		# 		"footer": { "text": f"뱅온 시간", "inline": True, "icon_url": base.iconLinkData().chzzk_icon },
 		# 		"timestamp": base.changeUTCtime(started_at)}]}
 
-    def get_state_data_change_title_json(self, message, url):
+    def get_state_data_change_title_json(self, message):
         return {"username": self.channel_name, "avatar_url": self.id_list.loc[self.channel_id, 'profile_image'],
                 "embeds": [
                     {"color": int(self.id_list.loc[self.channel_id, 'channel_color']),
@@ -422,19 +429,18 @@ class chzzk_live_message(base_live_message):
                         {"name": "이전 방제", "value": str(self._get_title()), "inline": True},
                         {"name": "현재 방제", "value": self.data.title, "inline": True}],
                     "title": f"{self.channel_name} {message}\n",
-                "url": url}]}
+                "url": self.get_channel_url()}]}
 
     async def getOffJson(self, state_data, message):
-        started_at = self.getStarted_at("closeDate")
-        live_thumbnail_image = await self.get_live_thumbnail_image(state_data, message)
+        thumbnail_url = await self.get_live_thumbnail_image(state_data, message)
         
         return {"username": self.channel_name, "avatar_url": self.id_list.loc[self.channel_id, 'profile_image'],
                 "embeds": [
                     {"color": int(self.id_list.loc[self.channel_id, 'channel_color']),
                     "title": self.channel_name +" 방송 종료\n",
-                "image": {"url": live_thumbnail_image},
+                "image": {"url": thumbnail_url},
                 "footer": { "text": f"방종 시간", "inline": True, "icon_url": base.iconLinkData().chzzk_icon },
-                "timestamp": base.changeUTCtime(started_at)}]}
+                "timestamp": base.changeUTCtime(self.getStarted_at("closeDate"))}]}
 
 # 아프리카 구현 클래스
 class afreeca_live_message(base_live_message):
@@ -513,7 +519,7 @@ class afreeca_live_message(base_live_message):
         return f"https://play.sooplive.co.kr/{afreecaID}/{bno}"
     
     def getViewer_count(self, state_data):
-        return state_data['broad']['current_sum_viewer']
+        self.data.view_count = state_data['broad']['current_sum_viewer']
     
     def getMessage(self):
         return "뱅온!" if (self.turnOnline()) else "방제 변경"
@@ -562,29 +568,29 @@ class afreeca_live_message(base_live_message):
         urlretrieve(self.getImageURL(), "explain.png")
 
     def getImageURL(self) -> str:
-        return f"https://liveimg.afreecatv.com/m/{self.title_data.loc[self.channel_id, 'chatChannelId']}"
+        link = f"https://liveimg.afreecatv.com/m/{self.title_data.loc[self.channel_id, 'chatChannelId']}"
+        self.data.thumbnail_url = link
+        return link
     
     async def getOnAirJson(self, message, state_data):
-        channel_url = self.get_channel_url()
-        started_at = self.getStarted_at("openDate")
-        viewer_count = self.getViewer_count(state_data)
-        live_thumbnail_image = await self.get_live_thumbnail_image(state_data)
+        self.getViewer_count(state_data)
+        thumbnail_url = await self.get_live_thumbnail_image(state_data)
 
-        return self.get_online_state_json(message, channel_url, started_at, live_thumbnail_image, viewer_count)
+        return self.get_online_state_json(message, thumbnail_url)
     
-    def get_online_state_json(self, message, url, started_at, live_thumbnail_image, viewer_count):
+    def get_online_state_json(self, message, thumbnail_url):
         return {"username": self.channel_name, "avatar_url": self.id_list.loc[self.channel_id, 'profile_image'],
                 "embeds": [
                     {"color": int(self.id_list.loc[self.channel_id, 'channel_color']),
                     "fields": [
                         {"name": "방제", "value": self.data.title, "inline": True},
                         {"name": ':busts_in_silhouette: 시청자수',
-                        "value": viewer_count, "inline": True}],
+                        "value": self.data.view_count, "inline": True}],
                     "title": f"{self.channel_name} {message}\n",
-                "url": url, 
-                "image": {"url": live_thumbnail_image},
+                "url": self.get_channel_url(), 
+                "image": {"url": thumbnail_url},
                 "footer": { "text": f"뱅온 시간", "inline": True, "icon_url": base.iconLinkData().soop_icon },
-                "timestamp": base.changeUTCtime(started_at)}]}
+                "timestamp": base.changeUTCtime(self.getStarted_at("openDate"))}]}
     
 	# def get_online_titleChange_state_json(self, message, title, url, started_at, thumbnail):
 	# 	return {"username": self.channel_name, "avatar_url": self.afreecaIDList.loc[self.channel_id, 'profile_image'],\
@@ -605,6 +611,154 @@ class afreeca_live_message(base_live_message):
                     {"color": int(self.id_list.loc[self.channel_id, 'channel_color']),
                     "title": self.channel_name +" 방송 종료\n",
                 }]}
+    
+
+class NotificationSender:
+    def __init__(self, 
+                 supabase_url: str = environ.get('supabase_url'),
+                 supabase_key: str = environ.get('supabase_key'),
+                 firebase_creds_path: str = environ.get('firebase_creds_path')):
+
+        self.supabase_url = supabase_url
+        self.supabase_key = supabase_key
+        
+        # Initialize Firebase Admin SDK
+        cred = credentials.Certificate(firebase_creds_path)
+        if not firebase_admin._apps:
+            firebase_admin.initialize_app(cred)
+        
+        # Configure settings
+        self.MAX_RETRIES = 3
+        self.MAX_CONCURRENT = 5
+        self.BASE_DELAY = 0.2  # Base delay for exponential backoff
+        self.TIMEOUT = 15  # Default timeout for requests
+
+    async def send_notifications(self, notifications: List[Tuple[str, Dict[str, Any]]]) -> List[str]:
+        """
+        Send notifications to multiple users
+        notifications: List of (user_token, notification_data) tuples
+        """
+        semaphore = asyncio.Semaphore(self.MAX_CONCURRENT)
+        
+        # Create tasks for each notification
+        tasks = [
+            asyncio.create_task(
+                self._send_notification_with_retry(token, data, semaphore)
+            ) 
+            for token, data in notifications
+        ]
+        
+        # Collect responses as tasks complete
+        responses = []
+        for task in asyncio.as_completed(tasks):
+            result = await task
+            if result is not None:
+                responses.append(result)
+        
+        return responses
+
+    async def _send_notification_with_retry(self, 
+                                          token: str, 
+                                          data: Dict[str, Any], 
+                                          semaphore: asyncio.Semaphore) -> str:
+        """Send a single notification with retry logic"""
+        async with semaphore:
+            for attempt in range(self.MAX_RETRIES):
+                try:
+                    # Create the message
+                    message = messaging.Message(
+                        data={
+                            'title': data.get('username', 'Notification'),
+                            'body': data.get('content', ''),
+                            'image': data.get('avatar_url', ''),
+                            'channel_name': data.get('username', '').split(' >> ')[-1] if ' >> ' in data.get('username', '') else '',
+                            'timestamp': str(datetime.now().timestamp())
+                        },
+                        token=token
+                    )
+                    
+                    # Send the message
+                    response = messaging.send(message)
+                    return response
+                
+                except messaging.ApiCallError as e:
+                    # Handle invalid token
+                    if 'invalid-argument' in str(e) or 'registration-token-not-registered' in str(e):
+                        await self._handle_invalid_token(token)
+                        break
+                    
+                    if attempt == self.MAX_RETRIES - 1:
+                        await self._log_error(f"Failed to send notification after {self.MAX_RETRIES} attempts: {e}")
+                        break
+                    
+                    # Exponential backoff
+                    await asyncio.sleep(self.BASE_DELAY * (2 ** attempt))
+                
+                except Exception as e:
+                    await self._log_error(f"Unexpected error sending notification: {e}")
+                    
+                    if attempt == self.MAX_RETRIES - 1:
+                        break
+                    
+                    # Exponential backoff
+                    await asyncio.sleep(self.BASE_DELAY * (2 ** attempt))
+        
+        return None
+
+    async def _handle_invalid_token(self, token: str):
+        """Remove invalid device token from database"""
+        if not self.supabase_url or not self.supabase_key:
+            return
+
+        try:
+            supabase = create_client(self.supabase_url, self.supabase_key)
+            
+            # Find and delete the token
+            response = supabase.table('user_devices').delete().eq('token', token).execute()
+            await self._log_error(f"Removed invalid token from database: {token}")
+        except Exception as e:
+            await self._log_error(f"Error removing invalid token: {e}")
+
+    async def _log_error(self, message: str):
+        """Log error message"""
+        print(f"{datetime.now()} {message}")
+        # You could also save errors to a log file or database
+
+def get_user_device_tokens(DO_TEST, user_data, channel_name, channel_id, notification_data, db_name):
+    """Get list of device tokens to send notifications to"""
+    result_tokens = []
+    try:
+        if DO_TEST:
+            # For testing
+            return result_tokens
+        
+        for user_id, user_info in user_data.items():
+            try:
+                # Check if user is subscribed to this channel
+                subscriptions = user_info.get(db_name, {})
+                
+                # Handle different data formats
+                if isinstance(subscriptions, str):
+                    channels = [subscriptions]
+                elif isinstance(subscriptions, dict):
+                    channels = subscriptions.get(channel_id, [])
+                else:
+                    channels = []
+                
+                # If user is subscribed to this channel, add their device tokens
+                if channel_name in channels:
+                    # Get all device tokens for this user
+                    for token in user_info.get('device_tokens', []):
+                        result_tokens.append((token, notification_data))
+            except (KeyError, AttributeError) as e:
+                continue
+        
+        return result_tokens
+    except Exception as e:
+        print(f"Error in get_user_device_tokens: {type(e).__name__}: {str(e)}")
+        return result_tokens
+
+
     
 async def main_loop(init: base.initVar):
 
@@ -629,6 +783,8 @@ async def main_loop(init: base.initVar):
             await asyncio.sleep(1)
 
 async def main():
+    # Flet 앱 백그라운드에서 실행
+    
     init = base.initVar()
     await base.discordBotDataVars(init)
     await base.userDataVar(init)
