@@ -547,6 +547,8 @@ class chzzk_chat_message:
 
         message_formats = {
             "후원채팅": lambda: f"{base} ({kwargs.get('amount')}치즈): {message}, {formatted_time}",
+
+            "영상후원": lambda: f"{base} ({kwargs.get('amount')}치즈) 영상후원: {message}, {formatted_time}",
             
             "후원미션걸기": lambda: f"{base} ({kwargs.get('missionText')} 모금함 미션 생성{kwargs.get('amount')}치즈 ): {message}, {formatted_time}",
             
@@ -579,6 +581,14 @@ class chzzk_chat_message:
                 chat_data['msgTime'],
                 amount=extras['payAmount']
             ),
+            "VIDEO": lambda: self.format_message(
+                "영상후원",
+                chat_type,
+                self.get_nickname(chat_data),
+                chat_data['msg'],
+                chat_data['msgTime'],
+                amount=extras['payAmount']
+            ),
             "MISSION": lambda: self.format_message(
                 "후원미션걸기",
                 chat_type,
@@ -596,7 +606,7 @@ class chzzk_chat_message:
                 chat_data['msgTime'],
                 amount=extras['payAmount'],
                 missionText=extras['missionText']
-            )
+            ),
         }
         
         handler = donation_handlers.get(donation_type)
