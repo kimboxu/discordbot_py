@@ -559,8 +559,7 @@ class afreeca_live_message(base_live_message):
             data = {"username": self.channel_name,
                     "avatar_url": self.id_list.loc[self.channel_id, 'profile_image']}
             
-            if self.channel_name in ["김챠멜", "마왕0216", "백곰파", "마뫄", "양아지"]: thumbnailURL = environ['hideThumbnailURL']
-            else: thumbnailURL = environ['recvThumbnailURL']
+            thumbnailURL = environ['recvThumbnailURL']
 
             thumbnail = post(thumbnailURL, files=file, data=data, timeout=3)
             try: remove('explain.png')
