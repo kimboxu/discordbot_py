@@ -8,8 +8,10 @@ from os import environ
 from json import loads
 from requests import post
 from datetime import datetime
+from supabase import create_client
 from dataclasses import dataclass, field
-from discord_webhook_sender import DiscordWebhookSender, get_list_of_urls, get_json_data
+from discord_webhook_sender import DiscordWebhookSender, get_list_of_urls, get_chat_json_data
+from my_app import send_push_notification
 
 @dataclass
 class afreecaChatData:
@@ -70,7 +72,7 @@ class afreeca_chat_message:
             try:
                 await self._connect_and_run()
             except Exception as e:
-                await DiscordWebhookSender._log_error(f"error in chat manager: {e}")
+                await DiscordWebhookSender._log_error(f"error in chat manager afreeca: {e}")
                 await base.change_chat_join_state(self.init.chat_json, self.data.channel_id)
             finally:
                 await self._cleanup_tasks()
@@ -237,21 +239,39 @@ class afreeca_chat_message:
         user_nick, profile_image = await self._get_user_info(user_id)
         if nickname != user_nick:
             return
+        
+        if nickname != self.init.afreeca_chatFilter.loc[user_id, "channelName"]: 
+            asyncio.create_task(self.afreeca_name_save(user_id, nickname))
 
         # 메시지 중복 체크
         self._process_new_message(chat)
         
         asyncio.create_task(self._post_chat(nickname, chat, profile_image, chat_type))
 
+    async def afreeca_name_save(self, user_id, user_name): #save profile data
+        supabase = create_client(environ['supabase_url'], environ['supabase_key'])
+        data = {
+            "channelID": user_id,
+            'channelName': user_name
+        }
+        for _ in range(3):
+            try:
+                supabase.table('afreeca_chatFilter').upsert(data).execute()
+                break
+            except Exception as e:
+                asyncio.create_task(DiscordWebhookSender._log_error(f"error saving profile data {e}"))
+                await asyncio.sleep(0.1)
 
     async def _post_chat(self, nickname, chat, profile_image, chat_type): #send to chatting message
         async with self.post_chat_semaphore:
             try:
 
-                json_data = get_json_data(nickname, chat, self.data.channel_name, profile_image)
+                json_data = get_chat_json_data(nickname, chat, self.data.channel_name, profile_image)
                                 
-                list_of_urls = get_list_of_urls(self.init.DO_TEST, self.init.userStateData, nickname, self.data.channel_id, json_data, "chat_user_json")
-                asyncio.create_task(DiscordWebhookSender().send_messages(list_of_urls))
+                list_of_urls = get_list_of_urls(self.init.DO_TEST, self.init.userStateData, nickname, self.data.channel_id, "chat_user_json")
+
+                asyncio.create_task(send_push_notification(list_of_urls, json_data))
+                asyncio.create_task(DiscordWebhookSender().send_messages(list_of_urls, json_data))
             
                 print(f"{datetime.now()} post chat [{chat_type} - {self.data.channel_name}] {nickname}: {chat}")
 
