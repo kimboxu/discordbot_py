@@ -214,6 +214,7 @@ async def discordBotDataVars(init: initVar):
 				'chzzk_titleData': 'channelID',
 				'afreeca_titleData': 'channelID',
 				'youtubeData': 'YoutubeChannelID',
+				'afreeca_chatFilter': 'channelID',
 				'cafeData': 'channelID',
 				'chzzk_video': 'channelID'
 			}
@@ -666,9 +667,45 @@ async def saveYoutubeData(youtubeData, youtubeChannelID):
 
 	for _ in range(3):
 		try:
-			supabase = create_client(environ['supabase_url'], environ['supabase_key'])
 			supabase.table('youtubeData').upsert(data).execute()
 			break
 		except Exception as e:
 			asyncio.create_task(DiscordWebhookSender._log_error(f"error saving youtube data {e}"))
 			await asyncio.sleep(0.1)
+
+async def saveNotificationsData(supabase, discord_webhook_url, json_data, user_data, notification_id, notification_time):
+    try:
+        # 알림 아이템 생성
+        notification_item = {
+            'id': notification_id,
+            'username': json_data.get('username', '알림'),
+            'content': json_data.get('content', '새 메시지가 있습니다'),
+            'avatar_url': json_data.get('avatar_url', ''),
+            'timestamp': notification_time,
+            'read': False
+        }
+        
+        # 기존 알림 목록 가져오기
+        notifications = user_data.get('notifications', [])
+        if not isinstance(notifications, list):
+            try:
+                notifications = loads(notifications)
+            except:
+                notifications = []
+        
+        # 이미 같은 ID의 알림이 있는지 확인
+        if not any(n.get('id') == notification_id for n in notifications):
+            # 새 알림 추가
+            notifications.append(notification_item)
+            
+            # 최대 1000개까지만 유지 (오래된 알림 삭제)
+            if len(notifications) > 1000:
+                notifications = notifications[-1000:]
+            
+            # DB 업데이트 (배치 작업의 일부)
+            supabase.table('userStateData').update({
+                'notifications': notifications
+            }).eq('discordURL', discord_webhook_url).execute()
+
+    except Exception as e:
+        print(f"알림 데이터 저장 중 오류: {e}")
