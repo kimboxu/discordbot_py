@@ -164,4 +164,4 @@ def get_chat_json_data(name, chat, channel_name, profile_image):
             return {'content'   : chat,
                     "username"  : name + " >> " + channel_name,
                     "avatar_url": profile_image}
-    
+  
