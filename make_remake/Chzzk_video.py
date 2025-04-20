@@ -2,6 +2,7 @@ import asyncio
 from datetime import datetime
 from discord_webhook_sender import DiscordWebhookSender, get_list_of_urls
 from base import changeUTCtime, get_message, iconLinkData, initVar, chzzk_saveVideoData
+from my_app import send_push_notification
 
 
 class chzzk_video:
@@ -80,8 +81,10 @@ class chzzk_video:
             channel_name = self.chzzkIDList.loc[self.chzzk_id, 'channelName']
             print(f"{datetime.now()} VOD upload {channel_name} {videoTitle}")
 
-            list_of_urls = get_list_of_urls(self.DO_TEST, self.userStateData, channel_name, self.chzzk_id, json_data, "치지직 VOD")
-            asyncio.create_task(DiscordWebhookSender().send_messages(list_of_urls))
+            list_of_urls = get_list_of_urls(self.DO_TEST, self.userStateData, channel_name, self.chzzk_id, "치지직 VOD")
+
+            asyncio.create_task(send_push_notification(list_of_urls, json_data))
+            asyncio.create_task(DiscordWebhookSender().send_messages(list_of_urls, json_data))
 
         except Exception as e:
             asyncio.create_task(DiscordWebhookSender._log_error(f"postLiveMSG {e}"))
