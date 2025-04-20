@@ -3,11 +3,12 @@ import asyncio
 from json import loads
 from typing import Dict
 from datetime import datetime
-from os import remove, environ
+from os import remove, environ, path
 from requests import post
 from urllib.request import urlretrieve
 from dataclasses import dataclass, field
 from discord_webhook_sender import DiscordWebhookSender, get_list_of_urls
+from my_app import send_push_notification
 
 from supabase import create_client
 from typing import List, Tuple, Dict, Any
@@ -101,28 +102,16 @@ class base_live_message:
             db_name = self._get_db_name(message)
             self._log_message(message)
 
-            # Get list of device tokens
-            token_list = get_user_device_tokens(
-                self.DO_TEST,
-                self.userStateData,
-                self.channel_name,
-                self.channel_id,
-                json_data,
-                db_name
-            )
             list_of_urls = get_list_of_urls(
                 self.DO_TEST, 
                 self.userStateData, 
                 self.channel_name, 
                 self.channel_id, 
-                json_data, 
                 db_name
             )
-            asyncio.create_task(DiscordWebhookSender().send_messages(list_of_urls))
-            # Send notifications
-            try:
-                asyncio.create_task(NotificationSender().send_notifications(token_list))
-            except: print("Test NotificationSender")
+
+            asyncio.create_task(send_push_notification(list_of_urls, json_data))
+            asyncio.create_task(DiscordWebhookSender().send_messages(list_of_urls, json_data))
             await base.save_airing_data(self.title_data, self.platform_name, self.channel_id)
 
         except Exception as e:
@@ -346,13 +335,26 @@ class chzzk_live_message(base_live_message):
     def get_thumbnail_image(self, state_data): 
         try:
             if state_data['content']['liveImageUrl'] is not None:
+                self.image_path = "explain.png"  # 파일 경로를 변수로 저장
                 self.saveImage(state_data)
-                file = {'file': open("explain.png", 'rb')}
-                data = {"username": self.channel_name,
-                        "avatar_url": self.id_list.loc[self.channel_id, 'profile_image']}
-                thumbnail = post(environ['recvThumbnailURL'], files=file, data=data, timeout=3)
-                try: remove('explain.png')
-                except: pass
+                
+                # 파일 핸들 명시적 관리
+                with open(self.image_path, 'rb') as image_file:
+                    file = {'file': image_file}
+                    data = {"username": self.channel_name,
+                            "avatar_url": self.id_list.loc[self.channel_id, 'profile_image']}
+                    
+                    thumbnail = post(environ['recvThumbnailURL'], files=file, data=data, timeout=3)
+                
+                # 파일 삭제 로직 개선
+                try: 
+                    if path.exists(self.image_path):
+                        remove(self.image_path)
+                        # print(f"파일 삭제 성공: {self.image_path}")  # 디버깅 필요시 활성화
+                except Exception as delete_error:
+                    asyncio.create_task(DiscordWebhookSender._log_error(f"{datetime.now()} Error deleting thumbnail: {delete_error}"))
+                
+                # 썸네일 URL 추출
                 frontIndex = thumbnail.text.index('"proxy_url"')
                 thumbnail = thumbnail.text[frontIndex:]
                 frontIndex = thumbnail.index('https://media.discordap')
@@ -363,7 +365,7 @@ class chzzk_live_message(base_live_message):
             return None
 
     def saveImage(self, state_data): 
-        urlretrieve(self.getImageURL(state_data), "explain.png")
+        urlretrieve(self.getImageURL(state_data), self.image_path)
 
     def getImageURL(self, state_data) -> str:
         link = state_data['content']['liveImageUrl']
@@ -554,16 +556,27 @@ class afreeca_live_message(base_live_message):
     
     def get_thumbnail_image(self): 
         try:
+            self.image_path = "explain.png"
             self.saveImage()
-            file = {'file': open("explain.png", 'rb')}
+            file = {'file': open(self.image_path, 'rb')}
             data = {"username": self.channel_name,
                     "avatar_url": self.id_list.loc[self.channel_id, 'profile_image']}
             
             thumbnailURL = environ['recvThumbnailURL']
 
             thumbnail = post(thumbnailURL, files=file, data=data, timeout=3)
-            try: remove('explain.png')
-            except: pass
+            
+            # 파일 핸들을 닫고 삭제
+            file['file'].close()
+            try: 
+                if path.exists(self.image_path):
+                    remove(self.image_path)
+                    print(f"파일 삭제 성공: {self.image_path}")
+                else:
+                    print(f"파일이 존재하지 않음: {self.image_path}")
+            except Exception as e:
+                print(f"파일 삭제 실패: {e}")
+                
             frontIndex = thumbnail.text.index('"proxy_url"')
             thumbnail = thumbnail.text[frontIndex:]
             frontIndex = thumbnail.index('https://media.discordap')
@@ -572,7 +585,7 @@ class afreeca_live_message(base_live_message):
             return None
 
     def saveImage(self): 
-        urlretrieve(self.getImageURL(), "explain.png")
+        urlretrieve(self.getImageURL(), self.image_path)
 
     def getImageURL(self) -> str:
         link = f"https://liveimg.afreecatv.com/m/{self.title_data.loc[self.channel_id, 'chatChannelId']}"
@@ -618,155 +631,7 @@ class afreeca_live_message(base_live_message):
                     {"color": int(self.id_list.loc[self.channel_id, 'channel_color']),
                     "title": self.channel_name +" 방송 종료\n",
                 }]}
-    
-
-class NotificationSender:
-    def __init__(self, 
-                 supabase_url: str = environ.get('supabase_url'),
-                 supabase_key: str = environ.get('supabase_key'),
-                 firebase_creds_path: str = environ.get('firebase_creds_path')):
-
-        self.supabase_url = supabase_url
-        self.supabase_key = supabase_key
-        
-        # Initialize Firebase Admin SDK
-        cred = credentials.Certificate(firebase_creds_path)
-        if not firebase_admin._apps:
-            firebase_admin.initialize_app(cred)
-        
-        # Configure settings
-        self.MAX_RETRIES = 3
-        self.MAX_CONCURRENT = 5
-        self.BASE_DELAY = 0.2  # Base delay for exponential backoff
-        self.TIMEOUT = 15  # Default timeout for requests
-
-    async def send_notifications(self, notifications: List[Tuple[str, Dict[str, Any]]]) -> List[str]:
-        """
-        Send notifications to multiple users
-        notifications: List of (user_token, notification_data) tuples
-        """
-        semaphore = asyncio.Semaphore(self.MAX_CONCURRENT)
-        
-        # Create tasks for each notification
-        tasks = [
-            asyncio.create_task(
-                self._send_notification_with_retry(token, data, semaphore)
-            ) 
-            for token, data in notifications
-        ]
-        
-        # Collect responses as tasks complete
-        responses = []
-        for task in asyncio.as_completed(tasks):
-            result = await task
-            if result is not None:
-                responses.append(result)
-        
-        return responses
-
-    async def _send_notification_with_retry(self, 
-                                          token: str, 
-                                          data: Dict[str, Any], 
-                                          semaphore: asyncio.Semaphore) -> str:
-        """Send a single notification with retry logic"""
-        async with semaphore:
-            for attempt in range(self.MAX_RETRIES):
-                try:
-                    # Create the message
-                    message = messaging.Message(
-                        data={
-                            'title': data.get('username', 'Notification'),
-                            'body': data.get('content', ''),
-                            'image': data.get('avatar_url', ''),
-                            'channel_name': data.get('username', '').split(' >> ')[-1] if ' >> ' in data.get('username', '') else '',
-                            'timestamp': str(datetime.now().timestamp())
-                        },
-                        token=token
-                    )
-                    
-                    # Send the message
-                    response = messaging.send(message)
-                    return response
-                
-                except messaging.ApiCallError as e:
-                    # Handle invalid token
-                    if 'invalid-argument' in str(e) or 'registration-token-not-registered' in str(e):
-                        await self._handle_invalid_token(token)
-                        break
-                    
-                    if attempt == self.MAX_RETRIES - 1:
-                        await self._log_error(f"Failed to send notification after {self.MAX_RETRIES} attempts: {e}")
-                        break
-                    
-                    # Exponential backoff
-                    await asyncio.sleep(self.BASE_DELAY * (2 ** attempt))
-                
-                except Exception as e:
-                    await self._log_error(f"Unexpected error sending notification: {e}")
-                    
-                    if attempt == self.MAX_RETRIES - 1:
-                        break
-                    
-                    # Exponential backoff
-                    await asyncio.sleep(self.BASE_DELAY * (2 ** attempt))
-        
-        return None
-
-    async def _handle_invalid_token(self, token: str):
-        """Remove invalid device token from database"""
-        if not self.supabase_url or not self.supabase_key:
-            return
-
-        try:
-            supabase = create_client(self.supabase_url, self.supabase_key)
-            
-            # Find and delete the token
-            response = supabase.table('user_devices').delete().eq('token', token).execute()
-            await self._log_error(f"Removed invalid token from database: {token}")
-        except Exception as e:
-            await self._log_error(f"Error removing invalid token: {e}")
-
-    async def _log_error(self, message: str):
-        """Log error message"""
-        print(f"{datetime.now()} {message}")
-        # You could also save errors to a log file or database
-
-def get_user_device_tokens(DO_TEST, user_data, channel_name, channel_id, notification_data, db_name):
-    """Get list of device tokens to send notifications to"""
-    result_tokens = []
-    try:
-        if DO_TEST:
-            # For testing
-            return result_tokens
-        
-        for user_id, user_info in user_data.items():
-            try:
-                # Check if user is subscribed to this channel
-                subscriptions = user_info.get(db_name, {})
-                
-                # Handle different data formats
-                if isinstance(subscriptions, str):
-                    channels = [subscriptions]
-                elif isinstance(subscriptions, dict):
-                    channels = subscriptions.get(channel_id, [])
-                else:
-                    channels = []
-                
-                # If user is subscribed to this channel, add their device tokens
-                if channel_name in channels:
-                    # Get all device tokens for this user
-                    for token in user_info.get('device_tokens', []):
-                        result_tokens.append((token, notification_data))
-            except (KeyError, AttributeError) as e:
-                continue
-        
-        return result_tokens
-    except Exception as e:
-        print(f"Error in get_user_device_tokens: {type(e).__name__}: {str(e)}")
-        return result_tokens
-
-
-    
+ 
 async def main_loop(init: base.initVar):
 
     while True:
