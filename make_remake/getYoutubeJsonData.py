@@ -6,6 +6,7 @@ from googleapiclient.errors import HttpError, Error
 from discord_webhook_sender import DiscordWebhookSender, get_list_of_urls
 from base import subjectReplace, iconLinkData, initVar, get_message, saveYoutubeData
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from my_app import send_push_notification
 
 from dataclasses import dataclass
 from typing import List, Optional
@@ -96,8 +97,10 @@ class getYoutubeJsonData:
 
 			for json_data in reversed(self.new_video_json_data_list):
 				if json_data is not None:
-					list_of_urls = get_list_of_urls(self.DO_TEST, self.userStateData, self.youtubechannelName, self.youtubeChannelID, json_data, "유튜브 알림")
-					await DiscordWebhookSender().send_messages(list_of_urls)
+					list_of_urls, = get_list_of_urls(self.DO_TEST, self.userStateData, self.youtubechannelName, self.youtubeChannelID, "유튜브 알림")
+
+					asyncio.create_task(send_push_notification(list_of_urls, json_data))
+					await DiscordWebhookSender().send_messages(list_of_urls, json_data)
 					print(f'{datetime.now()} {json_data["username"]}: {json_data["embeds"][0]["title"]}')
 					await asyncio.sleep(0.5)
 			# 다 저장 하도록 수정하기

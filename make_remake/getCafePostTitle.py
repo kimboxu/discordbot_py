@@ -6,6 +6,8 @@ from urllib.parse import quote
 from dataclasses import dataclass
 from discord_webhook_sender import DiscordWebhookSender, get_list_of_urls
 from base import subjectReplace, afreeca_getChannelOffStateData, chzzk_getChannelOffStateData, get_message, iconLinkData, initVar, chzzk_getLink, afreeca_getLink, saveCafeData
+from my_app import send_push_notification
+
 @dataclass
 class CafePostData:
     cafe_link: str
@@ -121,8 +123,10 @@ class getCafePostTitle:
                 json_data = await self.create_cafe_json(post_data)
                 print(f"{datetime.now()} {post_data.writer_nickname} post cafe {post_data.subject}")
 
-                list_of_urls = get_list_of_urls(self.DO_TEST, self.userStateData, post_data.writer_nickname, self.channel_id, json_data, "cafe_user_json")
-                asyncio.create_task(DiscordWebhookSender().send_messages(list_of_urls))
+                list_of_urls = get_list_of_urls(self.DO_TEST, self.userStateData, post_data.writer_nickname, self.channel_id, "cafe_user_json")
+
+                asyncio.create_task(send_push_notification(list_of_urls, json_data))
+                asyncio.create_task(DiscordWebhookSender().send_messages(list_of_urls, json_data))
 
             await saveCafeData(self.cafeData, self.channel_id)
             
