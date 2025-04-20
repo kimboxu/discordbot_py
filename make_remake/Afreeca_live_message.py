@@ -6,6 +6,7 @@ from requests import post
 from os import remove, environ
 from urllib.request import urlretrieve
 from discord_webhook_sender import DiscordWebhookSender, get_list_of_urls
+from my_app import send_push_notification
 
 class afreeca_live_message():
 	def __init__(self, init_var: base.initVar, channel_id):
@@ -129,8 +130,10 @@ class afreeca_live_message():
 			db_name = self._get_db_name(message)
 			self._log_message(message, channel_name)
 
-			list_of_urls = get_list_of_urls(self.DO_TEST, self.userStateData, channel_name, self.channel_id, json_data, db_name)
-			asyncio.create_task(DiscordWebhookSender().send_messages(list_of_urls))
+			list_of_urls = get_list_of_urls(self.DO_TEST, self.userStateData, channel_name, self.channel_id, db_name)
+			
+			asyncio.create_task(send_push_notification(list_of_urls, json_data))
+			asyncio.create_task(DiscordWebhookSender().send_messages(list_of_urls, json_data))
 
 			await base.save_airing_data(self.titleData, 'afreeca', self.channel_id)
 
