@@ -8,7 +8,8 @@ from json import loads, dumps, JSONDecodeError
 from dataclasses import dataclass, field
 from cmd_type import CHZZK_CHAT_CMD, CHZZK_DONATION_CMD
 from base import  getChzzkCookie, if_last_chat, initVar, get_message, change_chat_join_state, save_airing_data, if_after_time, discordBotDataVars, userDataVar
-from discord_webhook_sender import DiscordWebhookSender, get_list_of_urls, get_json_data
+from discord_webhook_sender import DiscordWebhookSender, get_list_of_urls, get_chat_json_data
+from my_app import send_push_notification
 
 @dataclass
 class ChzzkChatData:
@@ -207,13 +208,14 @@ class chzzk_chat_message:
     
     def get_msgTypeCode(self, chat_data) -> str:
         # 후원 타입 결정
+        msgTypeCode = chat_data.get('msgTypeCode') or chat_data.get('messageTypeCode')
         return {
             CHZZK_DONATION_CMD['chat']: '채팅',
             CHZZK_DONATION_CMD['subscribe']: '구독',
             CHZZK_DONATION_CMD['donation']: '일반후원',
             CHZZK_DONATION_CMD['CHAT_RESTRICTION_MSG']: '채팅제한',
             CHZZK_DONATION_CMD['subscription_gift']: '구독선물',
-        }.get(chat_data['msgTypeCode'], '모름')
+        }.get(msgTypeCode, '모름')
 
     async def check_chat_message(self, raw_message, chat_type):
         if chat_type == "핑": 
@@ -263,18 +265,17 @@ class chzzk_chat_message:
                 
                 userRoleCode = self.get_userRoleCode(chat_data, nickname)
                 
-                if self.data.channel_name != "양아지":
-                    message = self.print_msg(chat_data, chat_type)
-                    if not self.init.DO_TEST and (chat_type == "후원" or userRoleCode in ["streamer", "streaming_chat_manager"]):
-                        asyncio.create_task(DiscordWebhookSender._log_error(
-                            message, webhook_url=environ['donation_post_url']
-                        ))
-                    else:
-                        print(f"{datetime.now()} {message}")
+                message = self.print_msg(chat_data, chat_type)
+                if not self.init.DO_TEST and (chat_type == "후원" or userRoleCode in ["streamer", "streaming_chat_manager"]):
+                    asyncio.create_task(DiscordWebhookSender._log_error(
+                        message, webhook_url=environ['donation_post_url']
+                    ))
+                else:
+                    print(f"{datetime.now()} {message}")
 
                 #chzzk_chatFilter에 없는 사람 채팅은 제거
-                if nickname not in [*self.init.chzzk_chatFilter["channelName"]]:
-                    continue
+                # if nickname not in [*self.init.chzzk_chatFilter["channelName"]]:
+                #     continue
 
                 # self.data.chzzk_chat_msg_List.append([chat_data, chat_type])
                 task = asyncio.create_task(self._post_chat(chat_data, chat_type))
@@ -296,14 +297,15 @@ class chzzk_chat_message:
                 # profile_image_task = self._get_profile_image_cached(uid)
                 profile_image = await self._get_profile_image_cached(uid)
                 
-                json_data = get_json_data(nickname, chat, self.data.channel_name, profile_image)
+                json_data = get_chat_json_data(nickname, chat, self.data.channel_name, profile_image)
                 
                 list_of_urls = get_list_of_urls(self.init.DO_TEST, self.init.userStateData, 
-                                            nickname, self.data.channel_id, json_data, "chat_user_json")
+                                            nickname, self.data.channel_id, "chat_user_json")
                 
+                asyncio.create_task(send_push_notification(list_of_urls, json_data))
                 message_sender = DiscordWebhookSender()
-                webhook_task = asyncio.create_task(message_sender.send_messages(list_of_urls))
-                webhook_task.add_done_callback(lambda t: self._handle_webhook_result(t))
+                # webhook_task = asyncio.create_task(message_sender.send_messages(list_of_urls, json_data))
+                # webhook_task.add_done_callback(lambda t: self._handle_webhook_result(t))
                 
                 print(f"{datetime.now()} post chat {self.print_msg(chat_data, chat_type)}")
         except Exception as e:
@@ -352,17 +354,21 @@ class chzzk_chat_message:
         print(f"{self.data.channel_id} chat pong 종료")
 
     async def connect(self):
-        
         self.data.accessToken, self.data.extraToken = chzzk_api.fetch_accessToken(self.data.cid, getChzzkCookie())
         
         await self.data.sock.send(dumps(self._CHZZK_CHAT_DICT("connect")))
         sock_response = loads(await self.data.sock.recv())
         self.data.sid = sock_response['bdy']['sid']
-
         await self.data.sock.send(dumps(self._CHZZK_CHAT_DICT("recentMessageCount", num = 50)))
         sock_response = loads(await self.data.sock.recv())
 
-        messageTime = sock_response["bdy"]["messageList"][-1]["messageTime"]
+
+        bdy = await self.check_TEMPORARY_RESTRICT(sock_response)
+        chzzk_chat_list = self.get_chzzk_chat_list(bdy)
+        try:
+            messageTime = chzzk_chat_list[-1].get('messageTime') or chzzk_chat_list[-1].get('msgTime')
+        except Exception as e: print(f"test messageTime {e}")
+
         self.data.last_chat_time = datetime.fromtimestamp(messageTime/1000)
 
         asyncio.create_task(DiscordWebhookSender._log_error(f"{self.data.channel_id} 연결 완료 {self.data.cid}", webhook_url=environ['chat_post_url']))
@@ -519,8 +525,8 @@ class chzzk_chat_message:
     def print_msg(self, chat_data, chat_type) -> str:
 
         if chat_type == "채팅":
-            msg = chat_data['msg'] if chat_type == "채팅" else chat_data['content']
-            time = chat_data['msgTime'] if chat_type == "채팅" else chat_data['messageTime']
+            msg = chat_data.get('msg') or chat_data.get('content')
+            time = chat_data.get('msgTime') or chat_data.get('messageTime')
             return self.format_message('채팅', chat_type, self.get_nickname(chat_data), msg, time)
         
         if chat_type == "후원":
