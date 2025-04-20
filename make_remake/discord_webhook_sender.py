@@ -22,16 +22,16 @@ class DiscordWebhookSender:
         self.BASE_DELAY = 0.2  # Base delay for exponential backoff
         self.TIMEOUT = 15  # Default timeout for requests
 
-    async def send_messages(self, messages: List[Tuple[str, Dict[str, Any]]]) -> List[str]:
+    async def send_messages(self, messages: List[str], json_data) -> List[str]:
 
         semaphore = asyncio.Semaphore(self.MAX_CONCURRENT)
         
         async with ClientSession(connector=TCPConnector(ssl=False)) as session:
             tasks = [
                 asyncio.create_task(
-                    self._send_message_with_retry(session, url, data, semaphore)
+                    self._send_message_with_retry(session, url, json_data, semaphore)
                 ) 
-                for url, data in messages
+                for url in messages
             ]
             
             # Collect responses as tasks complete
@@ -129,12 +129,13 @@ class DiscordWebhookSender:
         except Exception as e:
             print(f"Failed to log error to webhook: {e}")
 
-def get_list_of_urls(DO_TEST, userStateData, name, channel_id, json_data, db_name):
+def get_list_of_urls(DO_TEST, userStateData, name, channel_id, db_name):
+
     result_urls = []
     try:
         if DO_TEST:
             for _ in range(1):
-                result_urls.append((environ['errorPostBotURL'], json_data))
+                result_urls.append(environ['errorPostBotURL'])
             return result_urls
         
         for discordWebhookURL in userStateData['discordURL']:
@@ -149,7 +150,7 @@ def get_list_of_urls(DO_TEST, userStateData, name, channel_id, json_data, db_nam
                         name_list = []  # 그 외의 경우 빈 리스트
 
                     if name in name_list:
-                        result_urls.append((discordWebhookURL, json_data))
+                        result_urls.append(discordWebhookURL)
                 except (KeyError, AttributeError) as e:
                     # 특정 URL 처리 중 오류가 발생해도 다른 URL 처리는 계속 진행
                     continue
@@ -159,7 +160,7 @@ def get_list_of_urls(DO_TEST, userStateData, name, channel_id, json_data, db_nam
         asyncio.create_task(DiscordWebhookSender._log_error(f"Error in get_cafe_list_of_urls: {type(e).__name__}: {str(e)}"))
         return result_urls
 
-def get_json_data(name, chat, channel_name, profile_image):
+def get_chat_json_data(name, chat, channel_name, profile_image):
             return {'content'   : chat,
                     "username"  : name + " >> " + channel_name,
                     "avatar_url": profile_image}
