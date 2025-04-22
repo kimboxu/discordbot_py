@@ -18,7 +18,7 @@ from discord_webhook_sender import DiscordWebhookSender
 
 class initVar:
 	load_dotenv()
-	DO_TEST = False
+	DO_TEST = True
 	
 	printCount 		= 100	#every 100 count, print count 
 	countTimeList = []
@@ -683,11 +683,11 @@ async def saveNotificationsData(supabase, discord_webhook_url, user_data, notifi
             except:
                 notifications = []
         
-        # notification_id 확인 - 이미 있는 알림인지 체크
+        # id 확인 - 이미 있는 알림인지 체크
         is_duplicate = False
         for idx, notification in enumerate(notifications):
             # 동일한 ID의 알림이 있는지 확인
-            if notification.get('notification_id') == notification_id:
+            if notification.get('id') == notification_id:
                 # 중복 발견 - 기존 항목 업데이트
                 notifications[idx] = data_fields
                 is_duplicate = True
