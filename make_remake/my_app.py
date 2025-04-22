@@ -781,7 +781,7 @@ async def send_push_notification(messages: List[str], json_data):
         # embeds 데이터가 있으면 추가 (Discord와 동일한 형식)
         if "embeds" in json_data and json_data["embeds"]:
             # FCM은 모든 데이터 필드가 문자열이어야 함
-            data_fields["embeds"] = dumps(json_data["embeds"])
+            data_fields["embeds"] = json_data["embeds"]
 
         # 배치 처리를 위한 작업 목록
         tasks = []
