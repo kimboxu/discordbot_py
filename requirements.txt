@@ -42,3 +42,4 @@ flask
 flask_cors
 firebase_admin
 gunicorn
+apscheduler
